@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta http-equiv="content-language" content="id">
+
+  <title>#</title>
+  <meta name="description" content="#">
+  <link rel="canonical" href="#">
+
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+  <meta name="googlebot" content="index, follow">
+  <meta name="keywords" content="#">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="#">
+  <meta property="og:description" content="#">
+  <meta property="og:url" content="#">
+  <meta property="og:image" content="https://images.unsplash.com/photo-1596838132731-3301c3fd4317?w=800&q=80">
+  <meta property="og:site_name" content="#">
+  <meta property="og:locale" content="id_ID">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="#">
+  <meta name="twitter:description" content="#">
+  <meta name="twitter:image" content="https://images.unsplash.com/photo-1596838132731-3301c3fd4317?w=800&q=80">
+
+  <!-- amphtml akan di-inject otomatis oleh TUNELDIR AMP Creator -->
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "#website",
+        "url": "#",
+        "name": "#",
+        "description": "#",
+        "inLanguage": "id-ID",
+        "publisher": { "@id": "#organization" }
+      },
+      {
+        "@type": "Organization",
+        "@id": "#organization",
+        "name": "#",
+        "url": "#",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://images.unsplash.com/photo-1511193311914-0346f16efe90?w=200&q=80"
+        }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "#webpage",
+        "url": "#",
+        "name": "#",
+        "description": "#",
+        "inLanguage": "id-ID",
+        "isPartOf": { "@id": "#website" },
+        "about": { "@id": "#organization" },
+        "datePublished": "2026-01-01",
+        "dateModified": "2026-08-25"
+      }
+    ]
+  }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --red:#ff0033;--dark-red:#8b0000;--gold:#ffd700;
+      --bg:#04000a;--glass:rgba(10,0,20,0.92);
+      --white:#ffffff;--text-dim:rgba(255,255,255,0.75);
+      --border:rgba(255,0,51,0.4);--border-gold:rgba(255,215,0,0.3);
+      --maxw:480px;--r:14px;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{max-width:var(--maxw);margin:0 auto;background:var(--bg);font-family:'Rajdhani',sans-serif;color:var(--white);min-height:100vh}
+    body{
+      background-image:
+        radial-gradient(ellipse at 50% 0%,rgba(139,0,0,0.5) 0%,transparent 60%),
+        radial-gradient(ellipse at 100% 100%,rgba(80,0,80,0.3) 0%,transparent 50%),
+        url('https://images.unsplash.com/photo-1596838132731-3301c3fd4317?w=480&q=60');
+      background-size:auto,auto,cover;
+      background-position:center top,right bottom,center;
+      background-attachment:fixed;
+      background-repeat:no-repeat;
+      min-height:100vh;padding-bottom:80px;position:relative;
+    }
+    body::before{content:'';position:fixed;inset:0;background:rgba(4,0,10,0.82);z-index:0;pointer-events:none}
+    main{position:relative;z-index:1;padding:0 12px 20px}
+
+    /* HEADER */
+    header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:12px 14px;
+      background:linear-gradient(180deg,rgba(100,0,0,0.4) 0%,rgba(4,0,10,0.1) 100%);
+      border-bottom:1px solid var(--border-gold);
+      position:sticky;top:0;z-index:100;backdrop-filter:blur(12px);
+    }
+    .logo-text{
+      font-family:'Orbitron',sans-serif;font-size:17px;font-weight:900;
+      color:var(--gold);letter-spacing:2px;
+      text-shadow:0 0 15px rgba(255,215,0,0.5),0 0 30px rgba(255,215,0,0.2);
+    }
+    .hdr-btns{display:flex;gap:8px}
+    .btn-hdr{
+      display:inline-block;padding:7px 14px;border-radius:8px;
+      font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;
+      text-decoration:none;letter-spacing:.5px;transition:all .2s;
+    }
+    .btn-daftar{
+      background:linear-gradient(135deg,var(--gold),#cc9900);
+      color:#000;border:none;
+      box-shadow:0 4px 15px rgba(255,215,0,0.3);
+    }
+    .btn-login{
+      background:transparent;color:var(--white);
+      border:1.5px solid rgba(255,255,255,0.5);
+    }
+    .btn-daftar:hover{filter:brightness(1.1);box-shadow:0 4px 20px rgba(255,215,0,0.5)}
+    .btn-login:hover{background:rgba(255,255,255,0.1)}
+
+    /* HERO BANNER */
+    .hero{
+      position:relative;width:100%;border-radius:var(--r);
+      margin:12px 0;overflow:hidden;
+      box-shadow:0 8px 32px rgba(0,0,0,0.8),0 0 20px rgba(255,0,51,0.3);
+      border:1px solid var(--border-gold);
+    }
+    .hero-img{
+      width:100%;height:190px;object-fit:cover;
+      display:block;filter:brightness(0.85) saturate(1.2);
+    }
+    .hero-overlay{
+      position:absolute;inset:0;
+      background:linear-gradient(180deg,transparent 30%,rgba(4,0,10,0.7) 100%);
+    }
+    .hero-badges{
+      position:absolute;top:10px;left:10px;
+      display:flex;flex-direction:column;gap:5px;
+    }
+    .badge{
+      display:inline-block;
+      font-family:'Orbitron',sans-serif;font-size:8px;font-weight:700;
+      letter-spacing:1px;padding:4px 10px;border-radius:20px;
+    }
+    .badge-red{background:rgba(255,0,51,0.9);color:#fff;box-shadow:0 2px 10px rgba(255,0,51,0.5)}
+    .badge-gold{background:rgba(255,215,0,0.9);color:#000;box-shadow:0 2px 10px rgba(255,215,0,0.4)}
+    .hero-bottom{
+      position:absolute;bottom:10px;right:10px;
+      font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;
+      color:var(--gold);text-shadow:0 0 10px rgba(255,215,0,0.8);
+    }
+
+    /* H1 */
+    .h1-section{text-align:center;padding:14px 4px 16px}
+    .h1-section h1{
+      font-family:'Orbitron',sans-serif;font-size:15px;font-weight:900;
+      line-height:1.4;color:var(--white);
+      text-shadow:0 0 20px rgba(255,0,51,0.6),0 2px 4px rgba(0,0,0,0.9);
+      letter-spacing:.5px;
+    }
+    .h1-section p{font-size:13px;color:var(--text-dim);margin-top:8px;line-height:1.6;font-weight:500}
+
+    /* STATS */
+    .stats-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+    .stat-item{
+      background:linear-gradient(135deg,rgba(139,0,0,0.2),rgba(4,0,10,0.8));
+      border:1px solid var(--border-gold);border-radius:10px;
+      padding:10px 8px;text-align:center;
+    }
+    .stat-num{
+      font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;
+      color:var(--gold);display:block;
+      text-shadow:0 0 10px rgba(255,215,0,0.5);
+    }
+    .stat-lbl{font-size:9px;color:var(--text-dim);margin-top:2px;display:block;font-weight:700;letter-spacing:.5px}
+
+    /* CTA BUTTONS */
+    .cta-wrap{display:grid;gap:10px;margin-bottom:14px}
+    .cta-btn{
+      position:relative;display:flex;align-items:center;justify-content:center;gap:10px;
+      padding:15px 20px;border-radius:var(--r);text-decoration:none;
+      font-family:'Orbitron',sans-serif;font-weight:900;font-size:12px;
+      letter-spacing:1.5px;color:var(--white);overflow:hidden;
+      border:1px solid var(--border);
+      background:linear-gradient(135deg,rgba(120,0,20,0.95),rgba(10,0,5,0.98));
+      box-shadow:0 8px 25px rgba(0,0,0,0.7),0 0 15px rgba(255,0,51,0.2);
+      text-shadow:0 1px 4px rgba(0,0,0,0.9),0 0 8px rgba(255,0,51,0.4);
+    }
+    .cta-btn-gold{
+      border-color:var(--border-gold);
+      background:linear-gradient(135deg,rgba(100,70,0,0.95),rgba(10,5,0,0.98));
+      box-shadow:0 8px 25px rgba(0,0,0,0.7),0 0 15px rgba(255,215,0,0.2);
+      text-shadow:0 1px 4px rgba(0,0,0,0.9);color:var(--gold);
+    }
+    .cta-btn::before{
+      content:'';position:absolute;inset:-2px;
+      background:linear-gradient(90deg,var(--red),#fff,var(--red));
+      background-size:300%;z-index:-1;border-radius:calc(var(--r) + 2px);
+      opacity:0.25;animation:ba 4s linear infinite;
+    }
+    .cta-btn-gold::before{background:linear-gradient(90deg,var(--gold),#fff,var(--gold));background-size:300%;opacity:0.2}
+    .cta-btn::after{
+      content:'';position:absolute;top:0;left:-100%;width:60%;height:100%;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);
+      transform:skewX(-20deg);animation:sw 3.5s ease-in-out infinite;
+    }
+    @keyframes ba{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+    @keyframes sw{0%,45%{left:-100%}65%,100%{left:200%}}
+    @keyframes pulse{0%,100%{box-shadow:0 0 10px rgba(255,0,51,0.3)}50%{box-shadow:0 0 28px rgba(255,0,51,0.7)}}
+    .pulse{animation:pulse 2.5s ease-in-out infinite}
+    .cta-icon{font-size:18px}
+
+    /* PROMO */
+    .promo{
+      background:linear-gradient(135deg,rgba(100,60,0,0.5),rgba(4,0,10,0.9));
+      border:1px solid var(--border-gold);border-radius:var(--r);
+      padding:14px;margin-bottom:14px;
+      display:flex;align-items:center;gap:12px;
+      box-shadow:0 0 20px rgba(255,215,0,0.1);
+    }
+    .promo-icon{font-size:34px;flex-shrink:0}
+    .promo h3{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:900;color:var(--gold);letter-spacing:1px;margin-bottom:4px}
+    .promo p{font-size:12px;color:var(--text-dim);line-height:1.5}
+    .promo strong{color:var(--gold)}
+
+    /* SECTION TITLE */
+    .sec-title{
+      font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;
+      color:var(--gold);letter-spacing:2px;text-transform:uppercase;
+      margin-bottom:10px;display:flex;align-items:center;gap:8px;
+    }
+    .sec-title::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--gold),transparent);opacity:.3}
+
+    /* FEATURES */
+    .features{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px}
+    .feat-card{
+      background:linear-gradient(135deg,rgba(20,0,5,0.9),rgba(10,0,20,0.95));
+      border:1px solid var(--border);border-radius:12px;
+      padding:12px;text-align:center;
+    }
+    .feat-icon{font-size:24px;display:block;margin-bottom:5px}
+    .feat-title{font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--white);letter-spacing:.5px;margin-bottom:3px}
+    .feat-desc{font-size:11px;color:var(--text-dim);line-height:1.5;font-weight:500}
+
+    /* GAME IMAGE BANNER */
+    .game-banner{
+      border-radius:var(--r);overflow:hidden;margin-bottom:14px;
+      border:1px solid var(--border-gold);
+      box-shadow:0 4px 20px rgba(255,215,0,0.1);
+    }
+    .game-banner img{width:100%;height:140px;object-fit:cover;display:block;filter:brightness(0.9) saturate(1.3)}
+
+    /* PROVIDERS */
+    .providers{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+    .prov-tag{
+      background:rgba(255,215,0,0.08);border:1px solid var(--border-gold);
+      border-radius:20px;padding:5px 12px;
+      font-size:10px;font-weight:700;color:rgba(255,215,0,0.8);letter-spacing:.5px;
+    }
+
+    /* SEO ARTICLE */
+    .seo-box{
+      background:linear-gradient(135deg,rgba(10,0,3,0.85),rgba(4,0,15,0.9));
+      border:1px solid rgba(255,0,51,0.15);border-radius:var(--r);
+      padding:16px;margin-bottom:14px;
+    }
+    .seo-box h2{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:var(--red);margin-bottom:8px;letter-spacing:.5px}
+    .seo-box h3{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;color:rgba(255,100,100,0.8);margin:10px 0 6px;letter-spacing:.5px}
+    .seo-box p{font-size:12px;color:var(--text-dim);line-height:1.8;margin-bottom:8px;font-weight:500}
+    .seo-box ul{padding-left:16px;margin-bottom:8px}
+    .seo-box ul li{font-size:12px;color:var(--text-dim);line-height:1.9}
+
+    /* FOOTER */
+    footer{text-align:center;padding:18px 16px 10px;border-top:1px solid rgba(255,215,0,0.15)}
+    footer p{font-size:10px;color:rgba(255,255,255,0.35);line-height:1.9;font-weight:500}
+
+    /* BOTTOM NAV */
+    nav.bottom-nav{
+      position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+      width:100%;max-width:var(--maxw);
+      background:rgba(4,0,10,0.97);backdrop-filter:blur(16px);
+      border-top:1px solid var(--border-gold);z-index:999;
+      box-shadow:0 -8px 24px rgba(0,0,0,0.9);
+    }
+    nav.bottom-nav ul{display:flex;list-style:none;height:58px}
+    nav.bottom-nav ul li{flex:1}
+    nav.bottom-nav ul li a{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      height:100%;text-decoration:none;color:rgba(255,255,255,0.55);
+      font-family:'Orbitron',sans-serif;font-size:8px;font-weight:700;
+      letter-spacing:.5px;gap:3px;transition:all .2s;
+      border-right:1px solid rgba(255,215,0,0.08);
+    }
+    nav.bottom-nav ul li:last-child a{border-right:none}
+    nav.bottom-nav ul li a .n-icon{font-size:20px}
+    nav.bottom-nav ul li a:hover{color:var(--gold);background:rgba(255,215,0,0.06)}
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo-text">#</div>
+    <div class="hdr-btns">
+      <a href="LINK_DAFTAR" class="btn-hdr btn-daftar" rel="nofollow" target="_blank">DAFTAR</a>
+      <a href="LINK_LOGIN" class="btn-hdr btn-login" rel="nofollow" target="_blank">LOGIN</a>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- HERO BANNER -->
+    <div class="hero">
+      <img class="hero-img"
+        src="https://images.unsplash.com/photo-1596838132731-3301c3fd4317?w=480&h=190&fit=crop&q=75"
+        alt="#" width="480" height="190" loading="eager">
+      <div class="hero-overlay"></div>
+      <div class="hero-badges">
+        <span class="badge badge-red">&#x1F525; SLOT GACOR</span>
+        <span class="badge badge-gold">&#x1F3C6; JACKPOT BESAR</span>
+      </div>
+      <div class="hero-bottom">RTP 98% &#x2605;</div>
+    </div>
+
+    <!-- H1 -->
+    <div class="h1-section">
+      <h1>#</h1>
+      <p>#</p>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-bar">
+      <div class="stat-item"><span class="stat-num">98%</span><span class="stat-lbl">RTP LIVE</span></div>
+      <div class="stat-item"><span class="stat-num">500+</span><span class="stat-lbl">GAME SLOT</span></div>
+      <div class="stat-item"><span class="stat-num">24/7</span><span class="stat-lbl">SUPPORT</span></div>
+    </div>
+
+    <!-- CTA BUTTONS -->
+    <div class="cta-wrap">
+      <a href="LINK_DAFTAR" class="cta-btn pulse" rel="nofollow noopener" target="_blank">
+        <span class="cta-icon">&#x1F3C6;</span> DAFTAR AKUN VIP GRATIS
+      </a>
+      <a href="LINK_DAFTAR" class="cta-btn cta-btn-gold" rel="nofollow noopener" target="_blank">
+        <span class="cta-icon">&#x1F4B0;</span> KLAIM BONUS NEW MEMBER
+      </a>
+      <a href="LINK_DAFTAR" class="cta-btn" rel="nofollow noopener" target="_blank">
+        <span class="cta-icon">&#x26A1;</span> SLOT GACOR HARI INI
+      </a>
+    </div>
+
+    <!-- PROMO -->
+    <div class="promo">
+      <div class="promo-icon">&#x1F4B0;</div>
+      <div>
+        <h3>BONUS DEPOSIT 100%</h3>
+        <p>Deposit pertama <strong>Rp 50.000</strong> langsung jadi <strong>Rp 100.000</strong>. Tanpa syarat ribet!</p>
+      </div>
+    </div>
+
+    <!-- GAME BANNER IMAGE -->
+    <div class="game-banner">
+      <img src="https://images.unsplash.com/photo-1511193311914-0346f16efe90?w=480&h=140&fit=crop&q=75"
+           alt="Slot Online Terpercaya" width="480" height="140" loading="lazy">
+    </div>
+
+    <!-- FEATURES -->
+    <p class="sec-title">&#x2B50; KEUNGGULAN KAMI</p>
+    <div class="features">
+      <div class="feat-card"><span class="feat-icon">&#x1F512;</span><div class="feat-title">SLOT TERPERCAYA</div><div class="feat-desc">Berlisensi PAGCOR & MGA. Transaksi 100% aman.</div></div>
+      <div class="feat-card"><span class="feat-icon">&#x26A1;</span><div class="feat-title">PROSES CEPAT</div><div class="feat-desc">Deposit & withdraw 1-3 menit. Tanpa delay.</div></div>
+      <div class="feat-card"><span class="feat-icon">&#x1F4F1;</span><div class="feat-title">SLOT PULSA</div><div class="feat-desc">Telkomsel, XL, Indosat. Tanpa potongan Rp 10rb.</div></div>
+      <div class="feat-card"><span class="feat-icon">&#x1F3AF;</span><div class="feat-title">RTP TERTINGGI</div><div class="feat-desc">RTP live update tiap jam. Diatas 97% setiap hari.</div></div>
+    </div>
+
+    <!-- PROVIDERS -->
+    <p class="sec-title">&#x1F3AE; PROVIDER GAME</p>
+    <div class="providers">
+      <span class="prov-tag">Pragmatic Play</span>
+      <span class="prov-tag">PG Soft</span>
+      <span class="prov-tag">Habanero</span>
+      <span class="prov-tag">Spadegaming</span>
+      <span class="prov-tag">Joker123</span>
+      <span class="prov-tag">Slot88</span>
+      <span class="prov-tag">RTG Slot</span>
+      <span class="prov-tag">CQ9</span>
+      <span class="prov-tag">Microgaming</span>
+      <span class="prov-tag">Playtech</span>
+    </div>
+
+    <!-- SEO ARTICLE -->
+    <div class="seo-box">
+      <h2>#</h2>
+      <p>#</p>
+      <h3>Mengapa Pilih Kami?</h3>
+      <ul>
+        <li>Slot gacor RTP live hingga 98% setiap hari</li>
+        <li>Deposit Rp 10.000 via pulsa, dana, OVO, GoPay</li>
+        <li>Bonus new member 100% langsung dikreditkan</li>
+        <li>Togel online resmi pasaran lengkap seluruh dunia</li>
+        <li>Customer service 24 jam via live chat & WhatsApp</li>
+        <li>Withdraw tercepat, 1-3 menit langsung cair</li>
+      </ul>
+      <h3>Cara Daftar</h3>
+      <p>Daftar hanya 1 menit. Isi form, verifikasi, deposit minimal Rp 10.000, dan langsung main ratusan game slot gacor terpercaya bersama jutaan member aktif di seluruh Indonesia.</p>
+    </div>
+
+    <footer>
+      <p>BRAND_NAME &bull; All Rights Reserved &bull; 2024 &ndash; 2026</p>
+      <p>#</p>
+    </footer>
+
+  </main>
+
+  <nav class="bottom-nav" aria-label="Navigasi utama">
+    <ul>
+      <li><a href="LINK_DAFTAR" rel="nofollow noopener" target="_blank"><span class="n-icon">&#x1F381;</span>PROMO</a></li>
+      <li><a href="LINK_DAFTAR" rel="nofollow noopener" target="_blank"><span class="n-icon">&#x270D;</span>DAFTAR</a></li>
+      <li><a href="LINK_LOGIN" rel="nofollow noopener" target="_blank"><span class="n-icon">&#x1F4AC;</span>LIVE CHAT</a></li>
+    </ul>
+  </nav>
+
+</body>
+</html>
